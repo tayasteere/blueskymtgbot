@@ -1,7 +1,9 @@
 import json
 from unittest.mock import patch
 
-from bot.metrics import record_metric
+import pytest
+
+from bot.metrics import record_metric, set_enabled
 
 
 def test_record_metric_writes_valid_json(capsys):
@@ -36,3 +38,25 @@ def test_record_metric_swallows_exception(capsys):
     with patch("bot.metrics.json.dumps", side_effect=RuntimeError("fail")):
         record_metric("TestMetric")  # must not raise
     assert "Failed to record metric" in capsys.readouterr().err
+
+
+# ── set_enabled ───────────────────────────────────────────────────────────────
+
+
+@pytest.fixture(autouse=True)
+def restore_enabled():
+    yield
+    set_enabled(True)
+
+
+def test_disabled_metrics_produce_no_output(capsys):
+    set_enabled(False)
+    record_metric("TestMetric")
+    assert capsys.readouterr().out == ""
+
+
+def test_re_enabled_metrics_produce_output(capsys):
+    set_enabled(False)
+    set_enabled(True)
+    record_metric("TestMetric")
+    assert capsys.readouterr().out != ""

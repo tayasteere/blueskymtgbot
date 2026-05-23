@@ -10,6 +10,7 @@ def test_defaults_are_correct():
     c = BotConfig()
     assert c.poll_interval_seconds == 5.0
     assert c.max_cards_per_mention == 4
+    assert c.metrics_enabled is True
     assert c.rate_limiting == RateLimitConfig()
 
 
@@ -28,6 +29,7 @@ def test_full_config_loaded(tmp_path):
         "[bot]\n"
         "poll_interval_seconds = 10\n"
         "max_cards_per_mention = 2\n"
+        "metrics_enabled = false\n"
         "[rate_limiting]\n"
         "window_seconds = 30\n"
         "max_mentions_per_window = 3\n"
@@ -38,6 +40,7 @@ def test_full_config_loaded(tmp_path):
     result = load_config(config_file)
     assert result.poll_interval_seconds == 10.0
     assert result.max_cards_per_mention == 2
+    assert result.metrics_enabled is False
     assert result.rate_limiting.window_seconds == 30.0
     assert result.rate_limiting.max_mentions_per_window == 3
     assert result.rate_limiting.violation_window_seconds == 300.0

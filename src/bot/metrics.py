@@ -3,9 +3,17 @@ import sys
 import time
 
 _NAMESPACE = "ScryfallBot"
+_enabled = True
+
+
+def set_enabled(enabled: bool) -> None:
+    global _enabled
+    _enabled = enabled
 
 
 def record_metric(name: str, dimensions: dict[str, str] | None = None) -> None:
+    if not _enabled:
+        return
     try:
         dimension_keys = list(dimensions.keys()) if dimensions else []
         entry: dict = {

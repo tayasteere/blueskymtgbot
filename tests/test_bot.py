@@ -56,13 +56,20 @@ def _make_rate_limiter(blocked_dids=None):
     return RateLimiter(RateLimitConfig(), blocked_dids=blocked_dids)
 
 
-def _make_bot(bluesky=None, card_lookup=None, rate_limiter=None, sleep_fn=None):
+def _make_bot(
+    bluesky=None,
+    card_lookup=None,
+    rate_limiter=None,
+    sleep_fn=None,
+    blocks_initialized=True,
+):
     return Bot(
         bluesky=bluesky or _make_bluesky(),
         card_lookup=card_lookup or _make_card_lookup(),
         rate_limiter=rate_limiter or _make_rate_limiter(),
         config=BotConfig(),
         sleep_fn=sleep_fn or (lambda _: None),
+        blocks_initialized=blocks_initialized,
     )
 
 
@@ -431,6 +438,68 @@ def test_random_mode_error_sends_error_reply(mock_metric):
     bluesky.reply_to_mention.assert_called_once()
     text = bluesky.reply_to_mention.call_args[0][1]
     assert "went wrong" in text
+
+
+# ── lazy block list loading ───────────────────────────────────────────────────
+
+
+@patch("bot.bot.record_metric")
+def test_block_list_fetched_when_not_initialized(mock_metric):
+    bluesky = _make_bluesky([])
+    bluesky.fetch_blocked_dids.return_value = {"did:plc:bad"}
+    rate_limiter = _make_rate_limiter()
+    bot = _make_bot(
+        bluesky=bluesky, rate_limiter=rate_limiter, blocks_initialized=False
+    )
+    bot.process_mentions()
+    bluesky.fetch_blocked_dids.assert_called_once()
+    assert rate_limiter.is_blocked("did:plc:bad")
+    mock_metric.assert_any_call("BlockListLoaded")
+
+
+@patch("bot.bot.record_metric")
+def test_block_list_not_fetched_when_already_initialized(mock_metric):
+    bluesky = _make_bluesky([])
+    bot = _make_bot(bluesky=bluesky, blocks_initialized=True)
+    bot.process_mentions()
+    bluesky.fetch_blocked_dids.assert_not_called()
+
+
+@patch("bot.bot.record_metric")
+def test_block_list_fetch_failure_continues_processing(mock_metric):
+    bluesky = _make_bluesky([_make_mention("[[Lightning Bolt]]")])
+    bluesky.fetch_blocked_dids.side_effect = RuntimeError("network error")
+    bot = _make_bot(bluesky=bluesky, blocks_initialized=False)
+    bot.process_mentions()
+    mock_metric.assert_any_call("BlockListLoadFailed")
+    bluesky.reply_to_mention.assert_called_once()
+
+
+@patch("bot.bot.record_metric")
+def test_block_list_retried_on_next_cycle_after_failure(mock_metric):
+    bluesky = _make_bluesky([])
+    bluesky.fetch_blocked_dids.side_effect = [
+        RuntimeError("first failure"),
+        {"did:plc:bad"},
+    ]
+    rate_limiter = _make_rate_limiter()
+    bot = _make_bot(
+        bluesky=bluesky, rate_limiter=rate_limiter, blocks_initialized=False
+    )
+    bot.process_mentions()
+    assert not rate_limiter.is_blocked("did:plc:bad")
+    bot.process_mentions()
+    assert rate_limiter.is_blocked("did:plc:bad")
+
+
+@patch("bot.bot.record_metric")
+def test_block_list_not_retried_after_success(mock_metric):
+    bluesky = _make_bluesky([])
+    bluesky.fetch_blocked_dids.return_value = set()
+    bot = _make_bot(bluesky=bluesky, blocks_initialized=False)
+    bot.process_mentions()
+    bot.process_mentions()
+    assert bluesky.fetch_blocked_dids.call_count == 1
 
 
 # ── rate limiting ─────────────────────────────────────────────────────────────

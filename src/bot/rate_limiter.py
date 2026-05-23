@@ -30,6 +30,9 @@ class RateLimiter:
     def is_blocked(self, did: str) -> bool:
         return did in self._blocked
 
+    def populate_blocked(self, dids: set[str]) -> None:
+        self._blocked.update(dids)
+
     def record_mention(self, did: str) -> RateLimitDecision:
         if did in self._blocked:
             return RateLimitDecision(allowed=False)

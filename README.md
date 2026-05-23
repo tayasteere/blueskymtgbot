@@ -1,5 +1,7 @@
 # Bluesky Scryfall Bot
 
+[![CI](https://github.com/tayasteere/blueskyscryfallbot/actions/workflows/ci.yml/badge.svg)](https://github.com/tayasteere/blueskyscryfallbot/actions/workflows/ci.yml)
+
 A Bluesky bot that looks up Magic: The Gathering cards via the [Scryfall API](https://scryfall.com/docs/api) and replies with card details, prices, rulings, legality, or card images.
 
 ## Usage
@@ -65,6 +67,66 @@ python -m bot.main
 
 The bot polls for new mentions every 5 seconds. On first run it skips all pre-existing notifications; on subsequent runs it resumes from `state.json` in the project root.
 
+## Deployment
+
+### Docker (recommended)
+
+Build and run with Docker Compose:
+
+```bash
+touch state.json   # ensure the state file exists before mounting
+docker compose up -d
+```
+
+Create a `.env` file in the project root with your credentials:
+
+```
+BLUESKY_HANDLE=yourbot.bsky.social
+BLUESKY_APP_PASSWORD=xxxx-xxxx-xxxx-xxxx
+SCRYFALL_USER_AGENT=YourBotName/1.0
+```
+
+`state.json` is mounted from the host so it survives container restarts. `config.toml` is mounted read-only; edit it on the host and restart the container to apply changes.
+
+To rebuild after a code change:
+
+```bash
+docker compose up -d --build
+```
+
+### systemd (Linux)
+
+For a VPS without Docker, create `/etc/systemd/system/scryfallbot.service`:
+
+```ini
+[Unit]
+Description=Bluesky Scryfall Bot
+After=network.target
+
+[Service]
+User=scryfallbot
+WorkingDirectory=/opt/scryfallbot
+EnvironmentFile=/opt/scryfallbot/.env
+ExecStart=/opt/scryfallbot/.venv/bin/python -m bot.main
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Then enable and start it:
+
+```bash
+systemctl daemon-reload
+systemctl enable --now scryfallbot
+journalctl -fu scryfallbot   # follow logs
+```
+
+### AWS
+
+The bot emits metrics in [CloudWatch Embedded Metric Format](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatchEmbedded_Metrics_Format.html). On EC2 with the [CloudWatch agent](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/Install-CloudWatch-Agent.html) configured to collect stdout, metrics are ingested automatically with no extra code. The Docker image works on EC2 as-is.
+
 ## Configuration
 
 Bot behaviour can be tuned by placing a `config.toml` file in the project root. All keys are optional — omitting a key uses the default shown below.
@@ -73,6 +135,7 @@ Bot behaviour can be tuned by placing a `config.toml` file in the project root. 
 [bot]
 poll_interval_seconds = 5   # how often to check for new mentions
 max_cards_per_mention = 4   # maximum cards looked up in a single mention
+metrics_enabled = true      # set to false to disable metric output
 
 [rate_limiting]
 window_seconds = 60              # length of the rate limit window
@@ -133,6 +196,33 @@ src/bot/
 ## License
 
 Copyright 2026 Taya Steere. Licensed under the [Apache License, Version 2.0](LICENSE).
+
+## Metrics
+
+The bot emits metrics in [CloudWatch Embedded Metric Format (EMF)](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatchEmbedded_Metrics_Format.html) — structured JSON written to stdout. On AWS (Lambda or EC2 with the CloudWatch agent), these are automatically ingested as CloudWatch metrics. Outside of AWS they appear as JSON log lines and are otherwise harmless.
+
+Metrics can be disabled by setting `metrics_enabled = false` in `config.toml`.
+
+### Metric events
+
+| Metric | Description |
+|---|---|
+| `MentionProcessed` | A mention containing at least one card query was processed |
+| `CardLookup` | A card was looked up; includes `Mode` dimension (`normal`, `image`, `prices`, `rulings`, `legality`, `random`) |
+| `CardNotFound` | Scryfall returned no match for the query |
+| `ScryfallApiError` | Scryfall returned an unexpected error response |
+| `ImageFetchFailure` | Card image could not be fetched |
+| `RateLimitHit` | Scryfall rate limit (429) was hit; the bot backed off and retried |
+| `RateLimitDrop` | A user mention was dropped due to per-user rate limiting |
+| `RateLimitWarning` | A warning reply was sent to a user approaching the block threshold |
+| `UserBlocked` | A user was permanently blocked via the Bluesky API |
+| `BlockListLoaded` | The block list was successfully fetched after a delayed startup |
+| `BlockListLoadFailed` | Block list fetch failed during a poll cycle; will retry next cycle |
+| `BlockListLoadSkipped` | Block list could not be fetched at startup; bot started with an empty list |
+| `LoginFailed` | Authentication was rejected — check credentials |
+| `LoginRetry` | A transient login error occurred; the bot is retrying |
+| `ProcessingError` | An unexpected error occurred while processing a mention |
+| `ReplyError` | A reply could not be sent after a processing error |
 
 ## Scryfall API rate limiting
 

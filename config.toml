@@ -1,6 +1,7 @@
 [bot]
 poll_interval_seconds = 5
 max_cards_per_mention = 4
+metrics_enabled = true
 
 [rate_limiting]
 window_seconds = 60

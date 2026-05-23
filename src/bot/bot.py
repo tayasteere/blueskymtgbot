@@ -33,14 +33,26 @@ class Bot:
         rate_limiter: RateLimiter,
         config: BotConfig | None = None,
         sleep_fn=None,
+        blocks_initialized: bool = True,
     ) -> None:
         self._bluesky = bluesky
         self._card_lookup = card_lookup
         self._rate_limiter = rate_limiter
         self._config = config or BotConfig()
         self._sleep = sleep_fn or time.sleep
+        self._blocks_initialized = blocks_initialized
 
     def process_mentions(self) -> None:
+        if not self._blocks_initialized:
+            try:
+                dids = self._bluesky.fetch_blocked_dids()
+                self._rate_limiter.populate_blocked(dids)
+                self._blocks_initialized = True
+                record_metric("BlockListLoaded")
+            except Exception as err:
+                print("Failed to load block list, will retry next cycle:", err)
+                record_metric("BlockListLoadFailed")
+
         mentions = self._bluesky.get_new_mentions()
 
         for mention in mentions:

@@ -144,6 +144,39 @@ def test_blocked_user_stays_blocked():
     assert decision.should_block is False
 
 
+# ── populate_blocked ──────────────────────────────────────────────────────────
+
+
+def test_populate_blocked_adds_dids():
+    limiter, _ = _make_limiter()
+    limiter.populate_blocked({"did:plc:a", "did:plc:b"})
+    assert limiter.is_blocked("did:plc:a")
+    assert limiter.is_blocked("did:plc:b")
+
+
+def test_populate_blocked_merges_with_existing():
+    limiter, _ = _make_limiter(blocked_dids={"did:plc:existing"})
+    limiter.populate_blocked({"did:plc:new"})
+    assert limiter.is_blocked("did:plc:existing")
+    assert limiter.is_blocked("did:plc:new")
+
+
+def test_populate_blocked_empty_set_is_noop():
+    limiter, _ = _make_limiter(blocked_dids={"did:plc:existing"})
+    limiter.populate_blocked(set())
+    assert limiter.is_blocked("did:plc:existing")
+
+
+def test_populated_user_is_subsequently_blocked():
+    limiter, _ = _make_limiter()
+    assert limiter.record_mention("did:plc:user1").allowed is True
+    limiter.populate_blocked({"did:plc:user1"})
+    assert limiter.record_mention("did:plc:user1").allowed is False
+
+
+# ── violation tracking ────────────────────────────────────────────────────────
+
+
 def test_violations_expire_after_window():
     limiter, clock = _make_limiter()
     did = "did:plc:user1"
