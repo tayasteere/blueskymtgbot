@@ -52,18 +52,18 @@ class CardData(TypedDict, total=False):
 
 class CardLookup:
     BASE_URL = "https://api.scryfall.com"
-    USER_AGENT = "BlueskyScryfallBot"
     MIN_REQUEST_INTERVAL_S = 1.0
     RATE_LIMIT_BACKOFF_S = 30.0
 
     def __init__(
         self,
+        user_agent: str,
         client: httpx.Client | None = None,
         sleep_fn=None,
         clock_fn=None,
     ) -> None:
         self._client = client or httpx.Client(
-            headers={"User-Agent": self.USER_AGENT, "Accept": "application/json"},
+            headers={"User-Agent": user_agent, "Accept": "application/json"},
         )
         self._sleep = sleep_fn or time.sleep
         self._clock = clock_fn or time.monotonic

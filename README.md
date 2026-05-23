@@ -52,7 +52,10 @@ Set the following environment variables:
 ```
 BLUESKY_HANDLE=yourbot.bsky.social
 BLUESKY_APP_PASSWORD=xxxx-xxxx-xxxx-xxxx
+SCRYFALL_USER_AGENT=YourBotName/1.0
 ```
+
+`SCRYFALL_USER_AGENT` identifies your bot to Scryfall. Use a unique name — Scryfall tracks usage per user agent, so running multiple bots with the same string conflates their traffic.
 
 ### Run
 

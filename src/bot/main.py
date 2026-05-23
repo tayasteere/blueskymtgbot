@@ -32,15 +32,18 @@ class _FileStateStore:
 def main() -> None:
     handle = os.environ.get("BLUESKY_HANDLE")
     password = os.environ.get("BLUESKY_APP_PASSWORD")
+    user_agent = os.environ.get("SCRYFALL_USER_AGENT")
 
-    if not handle or not password:
-        raise RuntimeError("Required env vars: BLUESKY_HANDLE, BLUESKY_APP_PASSWORD")
+    if not handle or not password or not user_agent:
+        raise RuntimeError(
+            "Required env vars: BLUESKY_HANDLE, BLUESKY_APP_PASSWORD, SCRYFALL_USER_AGENT"
+        )
 
     agent = Client()
     bluesky = BlueskyClient(agent, _FileStateStore(_STATE_FILE))
     bluesky.login(handle, password)
 
-    card_lookup = CardLookup()
+    card_lookup = CardLookup(user_agent=user_agent)
     bot = Bot(bluesky, card_lookup)
     bot.start()
 
