@@ -88,3 +88,21 @@ def test_no_mode_field_when_normal():
 
 def test_whitespace_only_brackets_excluded():
     assert parse_card_queries("[[ ]]") == []
+
+
+def test_random_mode_single_star():
+    result = parse_card_queries("[[*]]")
+    assert result == [CardQuery(name="", mode="random")]
+
+
+def test_random_mode_whitespace_around_star():
+    result = parse_card_queries("[[ * ]]")
+    assert result == [CardQuery(name="", mode="random")]
+
+
+def test_random_mode_mixed_with_named_card():
+    result = parse_card_queries("[[*]] and [[Lightning Bolt]]")
+    assert result == [
+        CardQuery(name="", mode="random"),
+        CardQuery(name="Lightning Bolt"),
+    ]

@@ -157,6 +157,34 @@ def test_429_records_metric_and_retries(mock_metric):
     mock_metric.assert_any_call("RateLimitHit")
 
 
+# ── random_card ───────────────────────────────────────────────────────────────
+
+
+@patch("bot.card_lookup.record_metric")
+def test_random_card_returns_data(mock_metric):
+    client = MagicMock()
+    client.get.return_value = _mock_response(200, BOLT)
+    result = CardLookup(client=client, sleep_fn=lambda _: None).random_card()
+    assert result == BOLT
+
+
+@patch("bot.card_lookup.record_metric")
+def test_random_card_calls_correct_url(mock_metric):
+    client = MagicMock()
+    client.get.return_value = _mock_response(200, BOLT)
+    CardLookup(client=client, sleep_fn=lambda _: None).random_card()
+    client.get.assert_called_once_with("https://api.scryfall.com/cards/random")
+
+
+@patch("bot.card_lookup.record_metric")
+def test_random_card_5xx_raises_and_records_metric(mock_metric):
+    client = MagicMock()
+    client.get.return_value = _mock_response(500)
+    with pytest.raises(RuntimeError, match="Scryfall API error: 500"):
+        CardLookup(client=client, sleep_fn=lambda _: None).random_card()
+    mock_metric.assert_called_with("ScryfallApiError")
+
+
 # ── find_rulings ─────────────────────────────────────────────────────────────
 
 

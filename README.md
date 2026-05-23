@@ -19,6 +19,7 @@ Mention the bot in any Bluesky post with card names wrapped in double brackets:
 | `$` | Prices (USD, EUR, MTGO TIX) | `[[$Lightning Bolt]]` |
 | `?` | Official rulings | `[[?Lightning Bolt]]` |
 | `#` | Format legalities | `[[#Lightning Bolt]]` |
+| `*` | Random card (text + image) | `[[*]]` |
 
 You can pin a specific printing using set code and collector number:
 

@@ -4,7 +4,7 @@ from typing import Literal
 
 _CARD_QUERY_PATTERN = re.compile(r"\[\[([^\]]+)\]\]")
 
-CardQueryMode = Literal["normal", "image", "prices", "rulings", "legality"]
+CardQueryMode = Literal["normal", "image", "prices", "rulings", "legality", "random"]
 
 _MODE_PREFIXES: dict[str, CardQueryMode] = {
     "!": "image",
@@ -29,6 +29,10 @@ def parse_card_queries(text: str) -> list[CardQuery]:
         parts = match.group(1).split("|")
         raw_name = parts[0].strip()
         if not raw_name:
+            continue
+
+        if raw_name == "*":
+            queries.append(CardQuery(name="", mode="random"))
             continue
 
         mode: CardQueryMode | None = None

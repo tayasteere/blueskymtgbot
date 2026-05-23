@@ -126,6 +126,15 @@ class CardLookup:
 
         return response.json()
 
+    def random_card(self) -> CardData:
+        response = self._throttled_fetch(f"{self.BASE_URL}/cards/random")
+        if not response.is_success:
+            record_metric("ScryfallApiError")
+            raise RuntimeError(
+                f"Scryfall API error: {response.status_code} {response.reason_phrase}"
+            )
+        return response.json()
+
     def find_rulings(self, card: CardData) -> list[Ruling]:
         rulings_uri = card.get("rulings_uri")
         if not rulings_uri:

@@ -23,16 +23,20 @@ def _make_bluesky(mentions=None):
     return bluesky
 
 
+_DEFAULT_CARD = {
+    "name": "Lightning Bolt",
+    "mana_cost": "{R}",
+    "type_line": "Instant",
+    "oracle_text": "Deals 3 damage.",
+    "rarity": "common",
+    "set": "m10",
+}
+
+
 def _make_card_lookup(card=None, rulings=None, image=None):
     lookup = MagicMock()
-    lookup.find_card.return_value = card or {
-        "name": "Lightning Bolt",
-        "mana_cost": "{R}",
-        "type_line": "Instant",
-        "oracle_text": "Deals 3 damage.",
-        "rarity": "common",
-        "set": "m10",
-    }
+    lookup.find_card.return_value = card or _DEFAULT_CARD
+    lookup.random_card.return_value = _DEFAULT_CARD
     lookup.find_rulings.return_value = rulings if rulings is not None else []
     lookup.fetch_image.return_value = image
     return lookup
@@ -347,6 +351,70 @@ def test_card_limit_reply_error_silently_caught(mock_metric):
     ]
     bot = _make_bot(bluesky=bluesky)
     bot.process_mentions()  # must not raise
+
+
+# ── random mode ───────────────────────────────────────────────────────────────
+
+
+@patch("bot.bot.record_metric")
+def test_random_mode_calls_random_card_not_find_card(mock_metric):
+    bluesky = _make_bluesky([_make_mention("[[*]]")])
+    lookup = _make_card_lookup()
+    bot = _make_bot(bluesky=bluesky, card_lookup=lookup)
+    bot.process_mentions()
+    lookup.random_card.assert_called_once()
+    lookup.find_card.assert_not_called()
+
+
+@patch("bot.bot.record_metric")
+def test_random_mode_replies_with_card_text(mock_metric):
+    bluesky = _make_bluesky([_make_mention("[[*]]")])
+    bot = _make_bot(bluesky=bluesky)
+    bot.process_mentions()
+    text = bluesky.reply_to_mention.call_args[0][1]
+    assert "Lightning Bolt" in text
+
+
+@patch("bot.bot.record_metric")
+def test_random_mode_attaches_image(mock_metric):
+    bluesky = _make_bluesky([_make_mention("[[*]]")])
+    lookup = _make_card_lookup(image=b"\xff\xd8img")
+    bot = _make_bot(bluesky=bluesky, card_lookup=lookup)
+    bot.process_mentions()
+    bluesky.upload_image.assert_called_once()
+    image_arg = bluesky.reply_to_mention.call_args[0][2]
+    assert image_arg is not None
+
+
+@patch("bot.bot.record_metric")
+def test_random_mode_no_image_when_fetch_returns_none(mock_metric):
+    bluesky = _make_bluesky([_make_mention("[[*]]")])
+    lookup = _make_card_lookup(image=None)
+    bot = _make_bot(bluesky=bluesky, card_lookup=lookup)
+    bot.process_mentions()
+    args = bluesky.reply_to_mention.call_args[0]
+    image_arg = args[2] if len(args) > 2 else None
+    assert image_arg is None
+
+
+@patch("bot.bot.record_metric")
+def test_random_mode_records_metric(mock_metric):
+    bluesky = _make_bluesky([_make_mention("[[*]]")])
+    _make_bot(bluesky=bluesky).process_mentions()
+    mock_metric.assert_any_call("CardLookup", {"Mode": "random"})
+
+
+@patch("bot.bot.record_metric")
+def test_random_mode_error_sends_error_reply(mock_metric):
+    bluesky = _make_bluesky([_make_mention("[[*]]")])
+    lookup = _make_card_lookup()
+    lookup.random_card.side_effect = RuntimeError("Scryfall down")
+    bot = _make_bot(bluesky=bluesky, card_lookup=lookup)
+    bot.process_mentions()
+    mock_metric.assert_any_call("ProcessingError")
+    bluesky.reply_to_mention.assert_called_once()
+    text = bluesky.reply_to_mention.call_args[0][1]
+    assert "went wrong" in text
 
 
 # ── start() ───────────────────────────────────────────────────────────────────

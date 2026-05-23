@@ -48,13 +48,19 @@ class Bot:
             for query in to_process:
                 card_name = query.name
                 try:
-                    card = self._card_lookup.find_card(
-                        query.name, query.set_code, query.collector_number
-                    )
                     mode = query.mode or "normal"
-                    record_metric("CardLookup", {"Mode": mode})
-                    if not card:
-                        record_metric("CardNotFound", {"Mode": mode})
+
+                    if query.mode == "random":
+                        card = self._card_lookup.random_card()
+                        card_name = card.get("name", "random card")
+                        record_metric("CardLookup", {"Mode": "random"})
+                    else:
+                        card = self._card_lookup.find_card(
+                            query.name, query.set_code, query.collector_number
+                        )
+                        record_metric("CardLookup", {"Mode": mode})
+                        if not card:
+                            record_metric("CardNotFound", {"Mode": mode})
 
                     match query.mode:
                         case "prices":
