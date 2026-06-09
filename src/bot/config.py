@@ -20,6 +20,17 @@ class BotConfig:
     max_cards_per_mention: int = 4
     metrics_enabled: bool = True
     rate_limiting: RateLimitConfig = field(default_factory=RateLimitConfig)
+    trivia_question_bank_path: str | None = None
+    trivia_timeout_hours: float = 24.0
+
+
+_TRIVIA_PATH_SENTINEL = "<unconfigured>"
+
+
+def _resolve_trivia_path(value: str | None) -> str | None:
+    if not value or value.strip() == _TRIVIA_PATH_SENTINEL:
+        return None
+    return value
 
 
 def load_config(path: Path) -> BotConfig:
@@ -31,6 +42,7 @@ def load_config(path: Path) -> BotConfig:
 
     bot = data.get("bot", {})
     rl = data.get("rate_limiting", {})
+    trivia = data.get("trivia", {})
 
     return BotConfig(
         poll_interval_seconds=bot.get("poll_interval_seconds", 5.0),
@@ -43,4 +55,6 @@ def load_config(path: Path) -> BotConfig:
             violations_before_warning=rl.get("violations_before_warning", 3),
             violations_before_block=rl.get("violations_before_block", 5),
         ),
+        trivia_question_bank_path=_resolve_trivia_path(trivia.get("question_bank_path")),
+        trivia_timeout_hours=trivia.get("timeout_hours", 24.0),
     )

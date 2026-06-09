@@ -15,6 +15,9 @@ class Mention:
     root_uri: str
     root_cid: str
     author_did: str
+    parent_uri: str = ""
+    parent_cid: str = ""
+    reason: str = "mention"
 
 
 @dataclass
@@ -60,7 +63,7 @@ class BlueskyClient:
         new_mentions = [
             n
             for n in notifications
-            if n.reason == "mention" and n.indexed_at > self._last_seen_at
+            if n.reason in ("mention", "reply") and n.indexed_at > self._last_seen_at
         ]
 
         # Advance cursor to the most recent notification seen this poll.
@@ -79,9 +82,13 @@ class BlueskyClient:
         if record.reply:
             root_uri = record.reply.root.uri
             root_cid = record.reply.root.cid
+            parent_uri = record.reply.parent.uri
+            parent_cid = record.reply.parent.cid
         else:
             root_uri = notification.uri
             root_cid = notification.cid
+            parent_uri = ""
+            parent_cid = ""
         return Mention(
             uri=notification.uri,
             cid=notification.cid,
@@ -89,6 +96,9 @@ class BlueskyClient:
             root_uri=root_uri,
             root_cid=root_cid,
             author_did=notification.author.did,
+            parent_uri=parent_uri,
+            parent_cid=parent_cid,
+            reason=notification.reason,
         )
 
     def fetch_blocked_dids(self) -> set[str]:

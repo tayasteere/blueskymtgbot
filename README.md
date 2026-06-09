@@ -32,6 +32,18 @@ You can pin a specific printing using set code and collector number:
 
 Up to **4 cards** can be looked up per mention. Additional cards require a separate mention.
 
+### Trivia
+
+Mention the bot with the word **trivia** anywhere in your post to receive a random MTG trivia question:
+
+```
+@scryfallbot.bsky.social trivia
+```
+
+The bot will reply with a question. Simply reply to that post with your answer — no need to @-mention the bot again. The bot will tell you whether you were correct and reveal the answer.
+
+Questions cover card rules text, flavor text, mana costs, power/toughness, colors, keywords, rarity, set names, and more. Trivia requires the question bank to be configured (see [Configuration](#configuration)).
+
 ## Setup
 
 ### Prerequisites
@@ -65,7 +77,7 @@ SCRYFALL_USER_AGENT=YourBotName/1.0
 python -m bot.main
 ```
 
-The bot polls for new mentions every 5 seconds. On first run it skips all pre-existing notifications; on subsequent runs it resumes from `state.json` in the project root.
+The bot polls for new mentions every 5 seconds. On first run it skips all pre-existing notifications; on subsequent runs it resumes from `state.json` in the project root. Pending trivia questions are persisted in `trivia_state.json`.
 
 ## Deployment
 
@@ -143,9 +155,74 @@ max_mentions_per_window = 5      # mentions allowed per user per window
 violation_window_seconds = 600   # window over which violations are counted
 violations_before_warning = 3    # violations before a warning reply is sent
 violations_before_block = 5      # violations before the user is blocked
+
+[trivia]
+# Path to the pre-generated question bank (see Question bank format below).
+# Set to a local file path for development or an S3 URI for production.
+# Leave as "<unconfigured>" (the default) to disable trivia entirely.
+question_bank_path = "<unconfigured>"
+timeout_hours = 24.0   # how long before an unanswered question expires
 ```
 
 If no `config.toml` is present the defaults above are used.
+
+### Question bank format
+
+The trivia question bank is a [JSONL](https://jsonlines.org/) file — one JSON object per line. The bot loads it entirely into memory at startup; the file is never modified by the bot.
+
+Each line must contain the following fields:
+
+| Field | Type | Description |
+|---|---|---|
+| `question` | string | The trivia question text (≤ 280 characters) |
+| `answer` | string | The canonical correct answer |
+| `category` | string | Question category key (see below) |
+| `answer_type` | string | How the answer is matched (see below) |
+| `card_name` | string | Name of the MTG card the question is about |
+| `oracle_id` | string | Scryfall oracle ID |
+
+Example line:
+
+```json
+{"question": "Which red instant bears the flavor text: \"Chandra never believed in using her 'inside voice.'\"?", "answer": "Chandra's Outrage", "category": "flavor_text", "answer_type": "card_name", "card_name": "Chandra's Outrage", "oracle_id": "47437865-0032-4f47-b0ab-034cc841bb84"}
+```
+
+**Question categories and answer types:**
+
+| `category` | `answer_type` | What the user must supply |
+|---|---|---|
+| `rules_text` | `card_name` | The card's name |
+| `flavor_text` | `card_name` | The card's name |
+| `keywords_guess` | `card_name` | The card's name |
+| `type_guess` | `subtype` | The card's subtype(s) |
+| `power_toughness` | `power_toughness` | Power/toughness as `X/Y` |
+| `mana_cost` | `mana_cost` | Mana cost e.g. `{2}{B}{B}` or `2BB` |
+| `cmc` | `cmc` | Mana value as a number |
+| `colors` | `colors` | Color name(s) or code(s) e.g. `Red` or `R` |
+| `color_identity` | `color_identity` | Color identity name(s) or code(s) |
+| `rarity` | `rarity` | `Common`, `Uncommon`, `Rare`, or `Mythic Rare` |
+| `set_name` | `set_name` | Set name, set code, or a partial name |
+| `type_line` | `type_line` | Full card type line |
+| `keywords` | `keywords` | Keyword abilities |
+
+Answer matching is case-insensitive and lenient where it makes sense: mana cost curly braces are optional, color codes (`W U B R G C`) are accepted alongside full names, multi-word answers are order-independent for subtypes/keywords/colors, and partial set names (e.g. `Betrayers`) match the full set name. Double-faced card names accept either face.
+
+### Loading from S3
+
+Set `question_bank_path` to an S3 URI to load the question bank from S3 at startup:
+
+```toml
+[trivia]
+question_bank_path = "s3://your-bucket/question_bank.jsonl"
+```
+
+Install the `boto3` dependency:
+
+```bash
+pip install -e ".[s3]"
+```
+
+AWS credentials are resolved via the standard boto3 chain (environment variables, IAM role, instance profile). On EC2 or ECS with an appropriate IAM role attached, no extra configuration is needed.
 
 ## Abuse prevention
 
@@ -191,6 +268,7 @@ src/bot/
   rate_limiter.py   — per-user rate limiting and block decisions
   config.py         — configuration dataclasses and config.toml loader
   metrics.py        — lightweight metric recording
+  trivia.py         — trivia question loading, answer matching, pending question state
 ```
 
 ## License
@@ -223,6 +301,8 @@ Metrics can be disabled by setting `metrics_enabled = false` in `config.toml`.
 | `LoginRetry` | A transient login error occurred; the bot is retrying |
 | `ProcessingError` | An unexpected error occurred while processing a mention |
 | `ReplyError` | A reply could not be sent after a processing error |
+| `TriviaQuestionAsked` | A trivia question was sent to a user |
+| `TriviaAnswered` | A trivia answer was received; includes `Correct` dimension (`True` / `False`) |
 
 ## Scryfall API rate limiting
 

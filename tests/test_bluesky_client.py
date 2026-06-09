@@ -82,17 +82,18 @@ def test_no_state_store_defaults_to_now():
 # ── get_new_mentions ──────────────────────────────────────────────────────────
 
 
-def test_returns_only_mention_notifications():
+def test_returns_mention_and_reply_notifications():
     notifs = [
         _make_notification("at://1", "c1", "mention", "hello", T_JAN2),
-        _make_notification("at://2", "c2", "like", "liked", T_JAN2),
+        _make_notification("at://2", "c2", "reply", "a reply", T_JAN2),
+        _make_notification("at://3", "c3", "like", "liked", T_JAN2),
     ]
     agent = _make_agent(notifs)
     client = BlueskyClient(agent)
     client._last_seen_at = T_BEFORE
     mentions = client.get_new_mentions()
-    assert len(mentions) == 1
-    assert mentions[0].uri == "at://1"
+    assert len(mentions) == 2
+    assert {m.uri for m in mentions} == {"at://1", "at://2"}
 
 
 def test_filters_by_cursor():
@@ -191,6 +192,9 @@ def _make_mention_obj():
         root_uri="at://root",
         root_cid="croot",
         author_did="did:plc:test",
+        parent_uri="",
+        parent_cid="",
+        reason="mention",
     )
 
 
@@ -303,6 +307,65 @@ def test_fetch_blocked_dids_empty():
     agent.app.bsky.graph.get_blocks.return_value = MagicMock(blocks=[], cursor=None)
     client = BlueskyClient(agent)
     assert client.fetch_blocked_dids() == set()
+
+
+# ── parent_uri / parent_cid / reason ─────────────────────────────────────────
+
+
+def test_parent_uri_populated_from_reply():
+    reply_mock = MagicMock()
+    reply_mock.root.uri = "at://root"
+    reply_mock.root.cid = "croot"
+    reply_mock.parent.uri = "at://parent"
+    reply_mock.parent.cid = "cparent"
+    notifs = [
+        _make_notification("at://1", "c1", "reply", "hi", T_JAN2, reply=reply_mock),
+    ]
+    agent = _make_agent(notifs)
+    client = BlueskyClient(agent)
+    client._last_seen_at = T_BEFORE
+    m = client.get_new_mentions()[0]
+    assert m.parent_uri == "at://parent"
+    assert m.parent_cid == "cparent"
+
+
+def test_parent_uri_empty_when_not_a_reply():
+    notifs = [
+        _make_notification("at://1", "c1", "mention", "hi", T_JAN2, reply=None),
+    ]
+    agent = _make_agent(notifs)
+    client = BlueskyClient(agent)
+    client._last_seen_at = T_BEFORE
+    m = client.get_new_mentions()[0]
+    assert m.parent_uri == ""
+    assert m.parent_cid == ""
+
+
+def test_reason_set_on_mention():
+    notifs = [
+        _make_notification("at://1", "c1", "mention", "hi", T_JAN2),
+    ]
+    agent = _make_agent(notifs)
+    client = BlueskyClient(agent)
+    client._last_seen_at = T_BEFORE
+    m = client.get_new_mentions()[0]
+    assert m.reason == "mention"
+
+
+def test_reason_set_on_reply():
+    reply_mock = MagicMock()
+    reply_mock.root.uri = "at://root"
+    reply_mock.root.cid = "croot"
+    reply_mock.parent.uri = "at://parent"
+    reply_mock.parent.cid = "cparent"
+    notifs = [
+        _make_notification("at://1", "c1", "reply", "hi", T_JAN2, reply=reply_mock),
+    ]
+    agent = _make_agent(notifs)
+    client = BlueskyClient(agent)
+    client._last_seen_at = T_BEFORE
+    m = client.get_new_mentions()[0]
+    assert m.reason == "reply"
 
 
 # ── block_user ────────────────────────────────────────────────────────────────

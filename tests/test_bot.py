@@ -1,9 +1,11 @@
+from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 from bot.bluesky_client import Mention, PostRef
 from bot.bot import Bot
 from bot.config import BotConfig, RateLimitConfig
 from bot.rate_limiter import RateLimiter
+from bot.trivia import PendingQuestion, TriviaManager, TriviaQuestion
 
 
 def _make_mention(
@@ -13,6 +15,9 @@ def _make_mention(
     root_uri="at://root",
     root_cid="croot",
     author_did="did:plc:user1",
+    parent_uri="",
+    parent_cid="",
+    reason="mention",
 ):
     return Mention(
         uri=uri,
@@ -21,6 +26,9 @@ def _make_mention(
         root_uri=root_uri,
         root_cid=root_cid,
         author_did=author_did,
+        parent_uri=parent_uri,
+        parent_cid=parent_cid,
+        reason=reason,
     )
 
 
@@ -62,6 +70,8 @@ def _make_bot(
     rate_limiter=None,
     sleep_fn=None,
     blocks_initialized=True,
+    trivia_manager=None,
+    trivia_state_saver=None,
 ):
     return Bot(
         bluesky=bluesky or _make_bluesky(),
@@ -70,6 +80,8 @@ def _make_bot(
         config=BotConfig(),
         sleep_fn=sleep_fn or (lambda _: None),
         blocks_initialized=blocks_initialized,
+        trivia_manager=trivia_manager,
+        trivia_state_saver=trivia_state_saver,
     )
 
 
@@ -612,3 +624,228 @@ def test_start_catches_process_mentions_exception(mock_metric):
         pass
 
     assert len(sleep_calls) == 1
+
+
+# ── trivia ────────────────────────────────────────────────────────────────────
+
+_TRIVIA_POST_URI = "at://bot/post/trivia1"
+
+
+def _make_trivia_manager(has_questions=True):
+    mgr = MagicMock(spec=TriviaManager)
+    mgr.has_questions.return_value = has_questions
+    mgr.get_pending.return_value = None
+    mgr.get_random_question.return_value = TriviaQuestion(
+        question="Which instant deals 3 damage?",
+        answer="Lightning Bolt",
+        category="rules_text",
+        answer_type="card_name",
+        card_name="Lightning Bolt",
+        oracle_id="abc",
+    )
+    return mgr
+
+
+def _make_pending_question(trivia_post_uri=_TRIVIA_POST_URI):
+    return PendingQuestion(
+        question="Which instant deals 3 damage?",
+        answer="Lightning Bolt",
+        category="rules_text",
+        answer_type="card_name",
+        card_name="Lightning Bolt",
+        trivia_post_uri=trivia_post_uri,
+        asked_at=datetime.now(timezone.utc),
+    )
+
+
+@patch("bot.bot.record_metric")
+def test_trivia_trigger_sends_question(mock_metric):
+    mention = _make_mention(text="@bot trivia please")
+    bluesky = _make_bluesky([mention])
+    bluesky.reply_to_mention.return_value = PostRef(uri=_TRIVIA_POST_URI, cid="c1")
+    mgr = _make_trivia_manager()
+    bot = _make_bot(bluesky=bluesky, trivia_manager=mgr)
+    bot.process_mentions()
+    bluesky.reply_to_mention.assert_called_once()
+    text = bluesky.reply_to_mention.call_args[0][1]
+    assert "Which instant deals 3 damage?" in text
+
+
+@patch("bot.bot.record_metric")
+def test_trivia_trigger_records_metric(mock_metric):
+    mention = _make_mention(text="trivia")
+    bluesky = _make_bluesky([mention])
+    bluesky.reply_to_mention.return_value = PostRef(uri=_TRIVIA_POST_URI, cid="c1")
+    mgr = _make_trivia_manager()
+    bot = _make_bot(bluesky=bluesky, trivia_manager=mgr)
+    bot.process_mentions()
+    mock_metric.assert_any_call("TriviaQuestionAsked")
+
+
+@patch("bot.bot.record_metric")
+def test_trivia_trigger_calls_set_pending(mock_metric):
+    mention = _make_mention(text="trivia")
+    bluesky = _make_bluesky([mention])
+    bluesky.reply_to_mention.return_value = PostRef(uri=_TRIVIA_POST_URI, cid="c1")
+    mgr = _make_trivia_manager()
+    bot = _make_bot(bluesky=bluesky, trivia_manager=mgr)
+    bot.process_mentions()
+    mgr.set_pending.assert_called_once()
+    args = mgr.set_pending.call_args[0]
+    assert args[0] == "did:plc:user1"
+    assert args[2] == _TRIVIA_POST_URI
+
+
+@patch("bot.bot.record_metric")
+def test_trivia_empty_bank_replies_with_message(mock_metric):
+    mention = _make_mention(text="trivia")
+    bluesky = _make_bluesky([mention])
+    mgr = _make_trivia_manager(has_questions=False)
+    bot = _make_bot(bluesky=bluesky, trivia_manager=mgr)
+    bot.process_mentions()
+    bluesky.reply_to_mention.assert_called_once()
+    text = bluesky.reply_to_mention.call_args[0][1]
+    assert "empty" in text.lower()
+
+
+@patch("bot.bot.record_metric")
+def test_trivia_trigger_case_insensitive(mock_metric):
+    mention = _make_mention(text="TRIVIA")
+    bluesky = _make_bluesky([mention])
+    bluesky.reply_to_mention.return_value = PostRef(uri=_TRIVIA_POST_URI, cid="c1")
+    mgr = _make_trivia_manager()
+    bot = _make_bot(bluesky=bluesky, trivia_manager=mgr)
+    bot.process_mentions()
+    mgr.get_random_question.assert_called_once()
+
+
+@patch("bot.bot.record_metric")
+def test_plain_reply_matching_trivia_post_evaluated_as_answer(mock_metric):
+    reply = _make_mention(
+        text="Lightning Bolt",
+        uri="at://user/reply/1",
+        parent_uri=_TRIVIA_POST_URI,
+        reason="reply",
+    )
+    bluesky = _make_bluesky([reply])
+    mgr = _make_trivia_manager()
+    mgr.get_pending.return_value = _make_pending_question()
+    mgr.check_answer.return_value = True
+    bot = _make_bot(bluesky=bluesky, trivia_manager=mgr)
+    bot.process_mentions()
+    mgr.check_answer.assert_called_once()
+    mgr.resolve_pending.assert_called_once_with("did:plc:user1")
+    text = bluesky.reply_to_mention.call_args[0][1]
+    assert "Correct" in text
+
+
+@patch("bot.bot.record_metric")
+def test_plain_reply_wrong_answer_replies_with_answer(mock_metric):
+    reply = _make_mention(
+        text="Counterspell",
+        parent_uri=_TRIVIA_POST_URI,
+        reason="reply",
+    )
+    bluesky = _make_bluesky([reply])
+    mgr = _make_trivia_manager()
+    mgr.get_pending.return_value = _make_pending_question()
+    mgr.check_answer.return_value = False
+    bot = _make_bot(bluesky=bluesky, trivia_manager=mgr)
+    bot.process_mentions()
+    text = bluesky.reply_to_mention.call_args[0][1]
+    assert "Not quite" in text
+    assert "Lightning Bolt" in text
+
+
+@patch("bot.bot.record_metric")
+def test_plain_reply_non_trivia_post_ignored(mock_metric):
+    reply = _make_mention(
+        text="some reply",
+        parent_uri="at://bot/post/other",
+        reason="reply",
+    )
+    bluesky = _make_bluesky([reply])
+    mgr = _make_trivia_manager()
+    mgr.get_pending.return_value = _make_pending_question(trivia_post_uri=_TRIVIA_POST_URI)
+    bot = _make_bot(bluesky=bluesky, trivia_manager=mgr)
+    bot.process_mentions()
+    # Parent URI doesn't match → not a trivia answer, reason=="reply" → skip entirely
+    bluesky.reply_to_mention.assert_not_called()
+
+
+@patch("bot.bot.record_metric")
+def test_plain_reply_no_pending_question_ignored(mock_metric):
+    reply = _make_mention(
+        text="Lightning Bolt",
+        parent_uri=_TRIVIA_POST_URI,
+        reason="reply",
+    )
+    bluesky = _make_bluesky([reply])
+    mgr = _make_trivia_manager()
+    mgr.get_pending.return_value = None  # no pending question
+    bot = _make_bot(bluesky=bluesky, trivia_manager=mgr)
+    bot.process_mentions()
+    bluesky.reply_to_mention.assert_not_called()
+
+
+@patch("bot.bot.record_metric")
+def test_trivia_answer_bypasses_rate_limiter(mock_metric):
+    reply = _make_mention(
+        text="Lightning Bolt",
+        parent_uri=_TRIVIA_POST_URI,
+        reason="reply",
+    )
+    bluesky = _make_bluesky([reply])
+    rate_limiter = MagicMock()
+    mgr = _make_trivia_manager()
+    mgr.get_pending.return_value = _make_pending_question()
+    mgr.check_answer.return_value = True
+    bot = _make_bot(bluesky=bluesky, rate_limiter=rate_limiter, trivia_manager=mgr)
+    bot.process_mentions()
+    rate_limiter.record_mention.assert_not_called()
+
+
+@patch("bot.bot.record_metric")
+def test_trivia_state_saver_called_after_question_asked(mock_metric):
+    mention = _make_mention(text="trivia")
+    bluesky = _make_bluesky([mention])
+    bluesky.reply_to_mention.return_value = PostRef(uri=_TRIVIA_POST_URI, cid="c1")
+    mgr = _make_trivia_manager()
+    saver_calls = []
+    bot = _make_bot(
+        bluesky=bluesky,
+        trivia_manager=mgr,
+        trivia_state_saver=lambda: saver_calls.append(1),
+    )
+    bot.process_mentions()
+    assert len(saver_calls) == 1
+
+
+@patch("bot.bot.record_metric")
+def test_trivia_state_saver_called_after_answer(mock_metric):
+    reply = _make_mention(
+        text="Lightning Bolt",
+        parent_uri=_TRIVIA_POST_URI,
+        reason="reply",
+    )
+    bluesky = _make_bluesky([reply])
+    mgr = _make_trivia_manager()
+    mgr.get_pending.return_value = _make_pending_question()
+    mgr.check_answer.return_value = True
+    saver_calls = []
+    bot = _make_bot(
+        bluesky=bluesky,
+        trivia_manager=mgr,
+        trivia_state_saver=lambda: saver_calls.append(1),
+    )
+    bot.process_mentions()
+    assert len(saver_calls) == 1
+
+
+@patch("bot.bot.record_metric")
+def test_no_trivia_manager_plain_replies_ignored(mock_metric):
+    reply = _make_mention(text="something", reason="reply")
+    bluesky = _make_bluesky([reply])
+    bot = _make_bot(bluesky=bluesky)  # no trivia_manager
+    bot.process_mentions()
+    bluesky.reply_to_mention.assert_not_called()

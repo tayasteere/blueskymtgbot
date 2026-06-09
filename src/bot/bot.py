@@ -1,5 +1,6 @@
+import re
 import time
-from typing import Any
+from typing import Any, Callable
 
 from .bluesky_client import BlueskyClient, PostRef
 from .card_formatter import (
@@ -16,6 +17,7 @@ from .config import BotConfig
 from .metrics import record_metric
 from .query_parser import parse_card_queries
 from .rate_limiter import RateLimiter
+from .trivia import TriviaManager, format_trivia_post
 
 MAX_POST_GRAPHEMES = 300
 
@@ -23,6 +25,8 @@ _RATE_LIMIT_WARNING = (
     "You've been sending too many card lookup requests."
     " Please slow down — if this continues you'll be blocked."
 )
+
+_TRIVIA_WORD = re.compile(r"\btrivia\b", re.IGNORECASE)
 
 
 class Bot:
@@ -34,6 +38,8 @@ class Bot:
         config: BotConfig | None = None,
         sleep_fn=None,
         blocks_initialized: bool = True,
+        trivia_manager: TriviaManager | None = None,
+        trivia_state_saver: Callable[[], None] | None = None,
     ) -> None:
         self._bluesky = bluesky
         self._card_lookup = card_lookup
@@ -41,6 +47,8 @@ class Bot:
         self._config = config or BotConfig()
         self._sleep = sleep_fn or time.sleep
         self._blocks_initialized = blocks_initialized
+        self._trivia = trivia_manager
+        self._save_trivia_state = trivia_state_saver
 
     def process_mentions(self) -> None:
         if not self._blocks_initialized:
@@ -53,9 +61,35 @@ class Bot:
                 print("Failed to load block list, will retry next cycle:", err)
                 record_metric("BlockListLoadFailed")
 
+        if self._trivia:
+            self._trivia.expire_old()
+
         mentions = self._bluesky.get_new_mentions()
+        trivia_state_changed = False
 
         for mention in mentions:
+            # --- Trivia answer (plain reply or @-mention replying to our trivia post) ---
+            if self._trivia:
+                pending = self._trivia.get_pending(mention.author_did)
+                if pending and mention.parent_uri == pending.trivia_post_uri:
+                    correct = self._trivia.check_answer(pending, mention.text)
+                    self._trivia.resolve_pending(mention.author_did)
+                    trivia_state_changed = True
+                    record_metric("TriviaAnswered", {"Correct": str(correct)})
+                    try:
+                        if correct:
+                            reply = f"Correct! The answer was: {pending.answer}"
+                        else:
+                            reply = f"Not quite! The answer was: {pending.answer}"
+                        self._bluesky.reply_to_mention(mention, reply)
+                    except Exception as err:
+                        print("Failed to send trivia result:", err)
+                    continue
+
+            # --- Skip plain reply notifications that aren't trivia answers ---
+            if mention.reason != "mention":
+                continue
+
             decision = self._rate_limiter.record_mention(mention.author_did)
 
             if decision.should_block:
@@ -78,6 +112,30 @@ class Bot:
                 record_metric("RateLimitDrop")
                 continue
 
+            # --- Trivia trigger ---
+            if self._trivia and _TRIVIA_WORD.search(mention.text):
+                if not self._trivia.has_questions():
+                    try:
+                        self._bluesky.reply_to_mention(
+                            mention, "Sorry, the trivia question bank is empty right now!"
+                        )
+                    except Exception as err:
+                        print("Failed to send trivia empty reply:", err)
+                    continue
+
+                question = self._trivia.get_random_question()
+                try:
+                    post_ref = self._bluesky.reply_to_mention(
+                        mention, format_trivia_post(question)
+                    )
+                    self._trivia.set_pending(mention.author_did, question, post_ref.uri)
+                    trivia_state_changed = True
+                    record_metric("TriviaQuestionAsked")
+                except Exception as err:
+                    print("Failed to send trivia question:", err)
+                continue
+
+            # --- Card query processing ---
             queries = parse_card_queries(mention.text)
             if not queries:
                 continue
@@ -213,6 +271,9 @@ class Bot:
                     self._bluesky.reply_to_mention(mention, limit_msg)
                 except Exception as err:
                     print("Failed to send card limit reply:", err)
+
+        if trivia_state_changed and self._save_trivia_state:
+            self._save_trivia_state()
 
     # Runs forever — polls for mentions, processes them sequentially to respect
     # Scryfall's 1 req/sec limit, then sleeps before the next cycle.

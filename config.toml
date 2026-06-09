@@ -9,3 +9,8 @@ max_mentions_per_window = 5
 violation_window_seconds = 600
 violations_before_warning = 3
 violations_before_block = 5
+
+# Local file path (development) or S3 URI (production)
+[trivia]
+question_bank_path = "<unconfigured>"
+timeout_hours = 24.0

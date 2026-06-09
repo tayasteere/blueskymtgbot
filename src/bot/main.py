@@ -14,10 +14,12 @@ from .config import load_config
 from .metrics import record_metric
 from .metrics import set_enabled as set_metrics_enabled
 from .rate_limiter import RateLimiter
+from .trivia import TriviaManager
 
 # Resolves to the project root (three levels up from src/bot/main.py)
 _PROJECT_ROOT = Path(__file__).parent.parent.parent
 _STATE_FILE = _PROJECT_ROOT / "state.json"
+_TRIVIA_STATE_FILE = _PROJECT_ROOT / "trivia_state.json"
 _CONFIG_FILE = _PROJECT_ROOT / "config.toml"
 
 # Login retry backoff in seconds: 30s, 60s, 120s, 240s, then capped at 300s.
@@ -62,6 +64,24 @@ def _login_with_retry(bluesky: BlueskyClient, handle: str, password: str) -> Non
             time.sleep(wait)
 
 
+def _load_trivia_state(trivia_manager: TriviaManager) -> None:
+    try:
+        data = json.loads(_TRIVIA_STATE_FILE.read_text())
+        trivia_manager.load_state(data)
+        print(f"Trivia: restored {len(data)} pending question(s) from disk")
+    except FileNotFoundError:
+        pass
+    except Exception as err:
+        print(f"Warning: could not load trivia state: {err}", file=sys.stderr)
+
+
+def _save_trivia_state(trivia_manager: TriviaManager) -> None:
+    try:
+        _TRIVIA_STATE_FILE.write_text(json.dumps(trivia_manager.dump_state()))
+    except Exception as err:
+        print(f"Warning: could not save trivia state: {err}", file=sys.stderr)
+
+
 def main() -> None:
     handle = os.environ.get("BLUESKY_HANDLE")
     password = os.environ.get("BLUESKY_APP_PASSWORD")
@@ -92,6 +112,22 @@ def main() -> None:
         blocked_dids = set()
         blocks_initialized = False
 
+    trivia_manager: TriviaManager | None = None
+    trivia_state_saver = None
+
+    if config.trivia_question_bank_path:
+        trivia_manager = TriviaManager(
+            config.trivia_question_bank_path,
+            timeout_hours=config.trivia_timeout_hours,
+        )
+        trivia_manager.load_questions()
+        if trivia_manager.has_questions():
+            _load_trivia_state(trivia_manager)
+            trivia_manager.expire_old()
+            trivia_state_saver = lambda: _save_trivia_state(trivia_manager)
+        else:
+            trivia_manager = None
+
     rate_limiter = RateLimiter(config.rate_limiting, blocked_dids=blocked_dids)
     card_lookup = CardLookup(user_agent=user_agent)
     bot = Bot(
@@ -100,6 +136,8 @@ def main() -> None:
         rate_limiter,
         config,
         blocks_initialized=blocks_initialized,
+        trivia_manager=trivia_manager,
+        trivia_state_saver=trivia_state_saver,
     )
     bot.start()
 

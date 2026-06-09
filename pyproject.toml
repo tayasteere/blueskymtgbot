@@ -25,6 +25,7 @@ dev = [
     "pytest-cov>=6.0",
     "ruff>=0.15",
 ]
+s3 = ["boto3"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

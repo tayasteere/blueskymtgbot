@@ -32,3 +32,6 @@ state.json
 # OS
 .DS_Store
 Thumbs.db
+
+# Local docs (design docs, notes — not for version control)
+local_docs/

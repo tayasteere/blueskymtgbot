@@ -62,3 +62,25 @@ def test_empty_config_file_uses_all_defaults(tmp_path):
     config_file.write_text("")
     result = load_config(config_file)
     assert result == BotConfig()
+
+
+def test_trivia_path_sentinel_treated_as_unconfigured(tmp_path):
+    config_file = tmp_path / "config.toml"
+    config_file.write_text('[trivia]\nquestion_bank_path = "<unconfigured>"\n')
+    result = load_config(config_file)
+    assert result.trivia_question_bank_path is None
+
+
+def test_trivia_path_real_value_passed_through(tmp_path):
+    config_file = tmp_path / "config.toml"
+    config_file.write_text('[trivia]\nquestion_bank_path = "s3://my-bucket/bank.jsonl"\n')
+    result = load_config(config_file)
+    assert result.trivia_question_bank_path == "s3://my-bucket/bank.jsonl"
+
+
+def test_trivia_path_absent_is_none(tmp_path):
+    config_file = tmp_path / "config.toml"
+    config_file.write_text("[trivia]\ntimeout_hours = 12.0\n")
+    result = load_config(config_file)
+    assert result.trivia_question_bank_path is None
+    assert result.trivia_timeout_hours == 12.0
