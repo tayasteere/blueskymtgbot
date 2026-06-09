@@ -124,7 +124,9 @@ def main() -> None:
         if trivia_manager.has_questions():
             _load_trivia_state(trivia_manager)
             trivia_manager.expire_old()
-            trivia_state_saver = lambda: _save_trivia_state(trivia_manager)
+
+            def trivia_state_saver() -> None:
+                _save_trivia_state(trivia_manager)
         else:
             trivia_manager = None
 

@@ -6,7 +6,6 @@ import re
 import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from pathlib import Path
 
 _COLOR_CODES: dict[str, str] = {
     "W": "white",
@@ -90,7 +89,7 @@ def _normalize_cmc(text: str) -> int | None:
 
 
 def _normalize_colors(text: str) -> set[str]:
-    """Accept full color names or single-letter codes, including concatenated like 'WU'."""
+    """Accept full color names or codes, including concatenated codes like 'WU'."""
     tokens = re.split(r"[,\s/]+", text.strip())
     result: set[str] = set()
     for token in tokens:
@@ -168,7 +167,10 @@ def check_answer(answer_type: str, canonical: str, user_answer: str) -> bool:
         case "type_line":
             return canonical.strip().lower() == user_answer.strip().lower()
         case "keywords":
-            return _normalize_keyword_set(canonical) == _normalize_keyword_set(user_answer)
+            return (
+                _normalize_keyword_set(canonical)
+                == _normalize_keyword_set(user_answer)
+            )
         case _:
             return canonical.strip().lower() == user_answer.strip().lower()
 

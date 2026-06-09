@@ -766,7 +766,9 @@ def test_plain_reply_non_trivia_post_ignored(mock_metric):
     )
     bluesky = _make_bluesky([reply])
     mgr = _make_trivia_manager()
-    mgr.get_pending.return_value = _make_pending_question(trivia_post_uri=_TRIVIA_POST_URI)
+    mgr.get_pending.return_value = _make_pending_question(
+        trivia_post_uri=_TRIVIA_POST_URI
+    )
     bot = _make_bot(bluesky=bluesky, trivia_manager=mgr)
     bot.process_mentions()
     # Parent URI doesn't match → not a trivia answer, reason=="reply" → skip entirely

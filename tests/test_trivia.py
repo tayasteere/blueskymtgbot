@@ -1,9 +1,6 @@
 import json
 import tempfile
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
-
-import pytest
 
 from bot.trivia import (
     PendingQuestion,
@@ -12,7 +9,6 @@ from bot.trivia import (
     check_answer,
     format_trivia_post,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -60,7 +56,9 @@ def test_card_name_case_insensitive():
     assert check_answer("card_name", "Lightning Bolt", "lightning bolt")
 
 def test_card_name_strips_punctuation():
-    assert check_answer("card_name", "Urza, Lord High Artificer", "Urza Lord High Artificer")
+    assert check_answer(
+        "card_name", "Urza, Lord High Artificer", "Urza Lord High Artificer"
+    )
 
 def test_card_name_apostrophe_optional():
     assert check_answer("card_name", "Urza's Saga", "Urzas Saga")
@@ -68,20 +66,23 @@ def test_card_name_apostrophe_optional():
 def test_card_name_wrong():
     assert not check_answer("card_name", "Lightning Bolt", "Counterspell")
 
+_DFC = "Shrill Howler // Howling Chorus"
+
+
 def test_card_name_dfc_full_name():
-    assert check_answer("card_name", "Shrill Howler // Howling Chorus", "Shrill Howler // Howling Chorus")
+    assert check_answer("card_name", _DFC, "Shrill Howler // Howling Chorus")
 
 def test_card_name_dfc_front_face():
-    assert check_answer("card_name", "Shrill Howler // Howling Chorus", "Shrill Howler")
+    assert check_answer("card_name", _DFC, "Shrill Howler")
 
 def test_card_name_dfc_back_face():
-    assert check_answer("card_name", "Shrill Howler // Howling Chorus", "Howling Chorus")
+    assert check_answer("card_name", _DFC, "Howling Chorus")
 
 def test_card_name_dfc_case_insensitive():
-    assert check_answer("card_name", "Shrill Howler // Howling Chorus", "howling chorus")
+    assert check_answer("card_name", _DFC, "howling chorus")
 
 def test_card_name_dfc_wrong():
-    assert not check_answer("card_name", "Shrill Howler // Howling Chorus", "Counterspell")
+    assert not check_answer("card_name", _DFC, "Counterspell")
 
 
 # ---------------------------------------------------------------------------
@@ -199,30 +200,33 @@ def test_rarity_wrong():
 # check_answer — set_name
 # ---------------------------------------------------------------------------
 
+_BOK = "Betrayers of Kamigawa (BOK)"
+
+
 def test_set_name_full_canonical():
-    assert check_answer("set_name", "Betrayers of Kamigawa (BOK)", "Betrayers of Kamigawa (BOK)")
+    assert check_answer("set_name", _BOK, "Betrayers of Kamigawa (BOK)")
 
 def test_set_name_bare_name():
-    assert check_answer("set_name", "Betrayers of Kamigawa (BOK)", "Betrayers of Kamigawa")
+    assert check_answer("set_name", _BOK, "Betrayers of Kamigawa")
 
 def test_set_name_code_only():
-    assert check_answer("set_name", "Betrayers of Kamigawa (BOK)", "BOK")
+    assert check_answer("set_name", _BOK, "BOK")
 
 def test_set_name_code_lowercase():
-    assert check_answer("set_name", "Betrayers of Kamigawa (BOK)", "bok")
+    assert check_answer("set_name", _BOK, "bok")
 
 def test_set_name_partial_word_subset():
-    assert check_answer("set_name", "Betrayers of Kamigawa (BOK)", "Betrayers")
+    assert check_answer("set_name", _BOK, "Betrayers")
 
 def test_set_name_partial_other_word():
-    assert check_answer("set_name", "Betrayers of Kamigawa (BOK)", "Kamigawa")
+    assert check_answer("set_name", _BOK, "Kamigawa")
 
 def test_set_name_wrong():
-    assert not check_answer("set_name", "Betrayers of Kamigawa (BOK)", "Dragon")
+    assert not check_answer("set_name", _BOK, "Dragon")
 
 def test_set_name_trivial_stopword_not_intended_use():
     # "of" technically matches as a word subset — acceptable per design
-    assert check_answer("set_name", "Betrayers of Kamigawa (BOK)", "of")
+    assert check_answer("set_name", _BOK, "of")
 
 
 # ---------------------------------------------------------------------------

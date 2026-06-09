@@ -27,6 +27,7 @@ _RATE_LIMIT_WARNING = (
 )
 
 _TRIVIA_WORD = re.compile(r"\btrivia\b", re.IGNORECASE)
+_TRIVIA_EMPTY_MSG = "Sorry, the trivia question bank is empty right now!"
 
 
 class Bot:
@@ -68,7 +69,7 @@ class Bot:
         trivia_state_changed = False
 
         for mention in mentions:
-            # --- Trivia answer (plain reply or @-mention replying to our trivia post) ---
+            # --- Trivia answer check (no rate limiting) ---
             if self._trivia:
                 pending = self._trivia.get_pending(mention.author_did)
                 if pending and mention.parent_uri == pending.trivia_post_uri:
@@ -116,9 +117,7 @@ class Bot:
             if self._trivia and _TRIVIA_WORD.search(mention.text):
                 if not self._trivia.has_questions():
                     try:
-                        self._bluesky.reply_to_mention(
-                            mention, "Sorry, the trivia question bank is empty right now!"
-                        )
+                        self._bluesky.reply_to_mention(mention, _TRIVIA_EMPTY_MSG)
                     except Exception as err:
                         print("Failed to send trivia empty reply:", err)
                     continue
