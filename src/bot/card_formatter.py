@@ -38,7 +38,13 @@ def format_card(card: CardData) -> str:
     ]
     meta_line = " · ".join(meta_parts)
 
-    parts = [p for p in [name_line, meta_line, card.get("oracle_text")] if p]
+    oracle_text = card.get("oracle_text")
+    if not oracle_text:
+        faces = card.get("card_faces") or []
+        face_texts = [f.get("oracle_text") for f in faces if f.get("oracle_text")]
+        oracle_text = "\n//\n".join(face_texts) if face_texts else None
+
+    parts = [p for p in [name_line, meta_line, oracle_text] if p]
     return "\n".join(parts)
 
 

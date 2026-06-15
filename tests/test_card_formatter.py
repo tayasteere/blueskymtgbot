@@ -52,6 +52,22 @@ def test_format_card_set_uppercased():
     assert "m10" not in result
 
 
+def test_format_card_dfc_includes_oracle_text_from_both_faces():
+    card = {
+        "name": "Delver of Secrets // Insectile Aberration",
+        "type_line": "Creature — Human Wizard // Creature — Human Insect",
+        "rarity": "uncommon",
+        "set": "isd",
+        "card_faces": [
+            {"oracle_text": "At the beginning of your upkeep, look at the top card."},
+            {"oracle_text": "Flying."},
+        ],
+    }
+    result = format_card(card)  # type: ignore[arg-type]
+    assert "At the beginning of your upkeep" in result
+    assert "Flying." in result
+
+
 # ── split_into_chunks ─────────────────────────────────────────────────────────
 
 
