@@ -6,6 +6,7 @@ from .bluesky_client import BlueskyClient, PostRef
 from .card_formatter import (
     card_not_found_message,
     format_card,
+    format_face_alt_text,
     format_legalities,
     format_prices,
     format_rulings,
@@ -202,14 +203,21 @@ class Bot:
                                 not_found = card_not_found_message(card_name)
                                 self._bluesky.reply_to_mention(mention, not_found)
                             else:
-                                image: dict[str, Any] | None = None
+                                images: list[dict[str, Any]] | None = None
                                 try:
-                                    image_data = self._card_lookup.fetch_image(card)
-                                    if image_data:
-                                        blob = self._bluesky.upload_image(
-                                            image_data, "image/jpeg"
+                                    image_list = [
+                                        {
+                                            "blob": self._bluesky.upload_image(
+                                                img, "image/jpeg"
+                                            ),
+                                            "alt": format_face_alt_text(card, i),
+                                        }
+                                        for i, img in enumerate(
+                                            self._card_lookup.fetch_images(card)
                                         )
-                                        image = {"blob": blob, "alt": format_card(card)}
+                                    ]
+                                    if image_list:
+                                        images = image_list
                                 except Exception as err:
                                     print(
                                         f"Failed to fetch/upload image"
@@ -218,7 +226,7 @@ class Bot:
                                     )
                                 card_display = card.get("name", card_name)
                                 self._bluesky.reply_to_mention(
-                                    mention, card_display, image
+                                    mention, card_display, images
                                 )
 
                         case _:  # normal and random
@@ -226,15 +234,22 @@ class Bot:
                             full_text = format_card(card) if card else not_found
                             chunks = split_into_chunks(full_text, MAX_POST_GRAPHEMES)
 
-                            image = None
+                            images = None
                             if card:
                                 try:
-                                    image_data = self._card_lookup.fetch_image(card)
-                                    if image_data:
-                                        blob = self._bluesky.upload_image(
-                                            image_data, "image/jpeg"
+                                    image_list = [
+                                        {
+                                            "blob": self._bluesky.upload_image(
+                                                img, "image/jpeg"
+                                            ),
+                                            "alt": format_face_alt_text(card, i),
+                                        }
+                                        for i, img in enumerate(
+                                            self._card_lookup.fetch_images(card)
                                         )
-                                        image = {"blob": blob, "alt": full_text}
+                                    ]
+                                    if image_list:
+                                        images = image_list
                                 except Exception as err:
                                     print(
                                         f"Failed to fetch/upload image"
@@ -244,7 +259,7 @@ class Bot:
 
                             root = PostRef(uri=mention.root_uri, cid=mention.root_cid)
                             prev_ref = self._bluesky.reply_to_mention(
-                                mention, chunks[0], image
+                                mention, chunks[0], images
                             )
                             for chunk in chunks[1:]:
                                 prev_ref = self._bluesky.reply_in_thread(

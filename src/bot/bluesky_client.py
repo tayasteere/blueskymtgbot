@@ -136,7 +136,7 @@ class BlueskyClient:
         self,
         mention: Mention,
         text: str,
-        image: dict[str, Any] | None = None,
+        images: list[dict[str, Any]] | None = None,
     ) -> PostRef:
         StrongRef = models.ComAtprotoRepoStrongRef.Main
         reply = models.AppBskyFeedPost.ReplyRef(
@@ -144,18 +144,19 @@ class BlueskyClient:
             root=StrongRef(uri=mention.root_uri, cid=mention.root_cid),
         )
         embed = None
-        if image:
+        if images:
             embed = models.AppBskyEmbedImages.Main(
                 images=[
                     models.AppBskyEmbedImages.Image(
-                        alt=image["alt"],
-                        image=image["blob"],
+                        alt=img["alt"],
+                        image=img["blob"],
                         aspect_ratio=models.AppBskyEmbedDefs.AspectRatio(
                             # Scryfall "normal" images are 745×1040
                             width=745,
                             height=1040,
                         ),
                     )
+                    for img in images
                 ]
             )
         result = self._agent.send_post(text=text, reply_to=reply, embed=embed)

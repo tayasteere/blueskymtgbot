@@ -1,6 +1,8 @@
 from bot.card_formatter import (
     card_not_found_message,
     format_card,
+    format_card_alt_text,
+    format_face_alt_text,
     format_legalities,
     format_prices,
     format_rulings,
@@ -234,3 +236,127 @@ def test_long_name_truncated_with_ellipsis():
 def test_short_name_not_truncated():
     assert "…" not in card_not_found_message("Bolt")
     assert "…" not in scryfall_error_message("Bolt")
+
+
+# ── format_face_alt_text ──────────────────────────────────────────────────────
+
+_DFC: dict = {
+    "name": "Delver of Secrets // Insectile Aberration",
+    "rarity": "uncommon",
+    "set": "isd",
+    "card_faces": [
+        {
+            "name": "Delver of Secrets",
+            "mana_cost": "{U}",
+            "type_line": "Creature — Human Wizard",
+            "oracle_text": "At the beginning of your upkeep, look at the top card...",
+            "flavor_text": "He pores over his books...",
+            "artist": "Nils Hamm",
+        },
+        {
+            "name": "Insectile Aberration",
+            "type_line": "Creature — Human Insect",
+            "oracle_text": "Flying.",
+            "artist": "Nils Hamm",
+        },
+    ],
+}
+
+
+def test_face_alt_text_single_faced_delegates_to_card_alt_text():
+    assert format_face_alt_text(BOLT) == format_card_alt_text(BOLT)
+
+
+def test_face_alt_text_dfc_face_0_uses_face_name():
+    text = format_face_alt_text(_DFC, 0)
+    assert "Delver of Secrets" in text
+    assert "Insectile Aberration" not in text
+
+
+def test_face_alt_text_dfc_face_1_uses_face_name():
+    text = format_face_alt_text(_DFC, 1)
+    assert "Insectile Aberration" in text
+    assert "Delver of Secrets" not in text
+
+
+def test_face_alt_text_dfc_includes_shared_rarity_and_set():
+    text = format_face_alt_text(_DFC, 0)
+    assert "uncommon" in text.lower()
+    assert "ISD" in text
+
+
+def test_face_alt_text_dfc_includes_face_oracle_text():
+    assert "Flying." in format_face_alt_text(_DFC, 1)
+
+
+def test_face_alt_text_dfc_includes_face_flavor_and_artist():
+    text = format_face_alt_text(_DFC, 0)
+    assert "He pores over his books..." in text
+    assert "Nils Hamm" in text
+
+
+def test_face_alt_text_dfc_face_without_flavor():
+    text = format_face_alt_text(_DFC, 1)
+    assert '"' not in text  # no flavor text quotes
+
+
+def test_face_alt_text_out_of_range_index_falls_back():
+    assert format_face_alt_text(_DFC, 99) == format_card_alt_text(_DFC)
+
+
+# ── format_card_alt_text ──────────────────────────────────────────────────────
+
+
+def test_alt_text_includes_base_card_info():
+    text = format_card_alt_text(BOLT)
+    assert "Lightning Bolt" in text
+    assert "Lightning Bolt deals 3 damage" in text
+
+
+def test_alt_text_includes_flavor_text():
+    card = {**BOLT, "flavor_text": "It doesn't just burn. It destroys."}
+    text = format_card_alt_text(card)
+    assert "It doesn't just burn. It destroys." in text
+
+
+def test_alt_text_includes_artist():
+    card = {**BOLT, "artist": "Christopher Rush"}
+    text = format_card_alt_text(card)
+    assert "Christopher Rush" in text
+
+
+def test_alt_text_no_flavor_no_artist():
+    text = format_card_alt_text(BOLT)
+    assert "Art:" not in text
+    assert text == format_card(BOLT)
+
+
+def test_alt_text_dfc_falls_back_to_first_face():
+    card = {
+        "name": "Delver of Secrets // Insectile Aberration",
+        "type_line": "Creature // Creature",
+        "rarity": "common",
+        "set": "isd",
+        "card_faces": [
+            {
+                "flavor_text": "He pores over his books...",
+                "artist": "Nils Hamm",
+            }
+        ],
+    }
+    text = format_card_alt_text(card)
+    assert "He pores over his books..." in text
+    assert "Nils Hamm" in text
+
+
+def test_alt_text_top_level_takes_precedence_over_face():
+    card = {
+        **BOLT,
+        "flavor_text": "Top level flavor",
+        "artist": "Top Artist",
+        "card_faces": [{"flavor_text": "Face flavor", "artist": "Face Artist"}],
+    }
+    text = format_card_alt_text(card)
+    assert "Top level flavor" in text
+    assert "Top Artist" in text
+    assert "Face flavor" not in text

@@ -42,6 +42,49 @@ def format_card(card: CardData) -> str:
     return "\n".join(parts)
 
 
+def format_card_alt_text(card: CardData) -> str:
+    base = format_card(card)
+    faces = card.get("card_faces") or []
+    first_face = faces[0] if faces else {}
+    flavor_text = card.get("flavor_text") or first_face.get("flavor_text")
+    artist = card.get("artist") or first_face.get("artist")
+    parts = [base]
+    if flavor_text:
+        parts.append(f'"{flavor_text}"')
+    if artist:
+        parts.append(f"Art: {artist}")
+    return "\n".join(parts)
+
+
+def format_face_alt_text(card: CardData, face_index: int = 0) -> str:
+    faces = card.get("card_faces") or []
+    if not faces or face_index >= len(faces):
+        return format_card_alt_text(card)
+    face = faces[face_index]
+    name = face.get("name", "")
+    mana_cost = face.get("mana_cost")
+    name_line = f"{name} {mana_cost}" if mana_cost else name
+    set_code = card.get("set")
+    meta_parts = [
+        p
+        for p in [
+            face.get("type_line"),
+            card.get("rarity"),
+            set_code.upper() if set_code else None,
+        ]
+        if p
+    ]
+    meta_line = " · ".join(meta_parts)
+    parts = [p for p in [name_line, meta_line, face.get("oracle_text")] if p]
+    flavor_text = face.get("flavor_text")
+    artist = face.get("artist")
+    if flavor_text:
+        parts.append(f'"{flavor_text}"')
+    if artist:
+        parts.append(f"Art: {artist}")
+    return "\n".join(parts)
+
+
 def split_into_chunks(text: str, limit: int) -> list[str]:
     chars = list(text)
     if len(chars) <= limit:

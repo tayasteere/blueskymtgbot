@@ -17,6 +17,12 @@ class ImageUris(TypedDict, total=False):
 
 class CardFace(TypedDict, total=False):
     image_uris: ImageUris
+    name: str
+    mana_cost: str
+    type_line: str
+    oracle_text: str
+    flavor_text: str
+    artist: str
 
 
 class CardPrices(TypedDict, total=False):
@@ -48,6 +54,8 @@ class CardData(TypedDict, total=False):
     legalities: Legalities
     id: str
     rulings_uri: str
+    flavor_text: str
+    artist: str
 
 
 class CardLookup:
@@ -150,27 +158,26 @@ class CardLookup:
 
         return response.json()["data"]
 
-    def fetch_image(self, card: CardData) -> bytes | None:
-        # Double-faced cards store image_uris per face rather than at the top level
-        uri: str | None = None
-        image_uris = card.get("image_uris")
-        if image_uris:
-            uri = image_uris.get("normal")
+    def fetch_images(self, card: CardData) -> list[bytes]:
+        card_faces = card.get("card_faces")
+        if card_faces:
+            urls = [
+                (face.get("image_uris") or {}).get("normal")
+                for face in card_faces
+            ]
         else:
-            card_faces = card.get("card_faces")
-            if card_faces:
-                face_uris = card_faces[0].get("image_uris")
-                if face_uris:
-                    uri = face_uris.get("normal")
+            image_uris = card.get("image_uris") or {}
+            url = image_uris.get("normal")
+            urls = [url] if url else []
 
-        if not uri:
-            return None
-
-        response = self._client.get(uri)
-
-        if not response.is_success:
-            print(f"Image fetch failed ({response.status_code}): {uri}")
-            record_metric("ImageFetchFailure")
-            return None
-
-        return response.content
+        results: list[bytes] = []
+        for url in urls:
+            if not url:
+                continue
+            response = self._client.get(url)
+            if not response.is_success:
+                print(f"Image fetch failed ({response.status_code}): {url}")
+                record_metric("ImageFetchFailure")
+                continue
+            results.append(response.content)
+        return results

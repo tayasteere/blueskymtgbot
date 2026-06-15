@@ -223,10 +223,25 @@ def test_reply_to_mention_with_image_passes_embed():
     client.reply_to_mention(
         _make_mention_obj(),
         "Card!",
-        image={"blob": _make_blob_ref(), "alt": "alt text"},
+        images=[{"blob": _make_blob_ref(), "alt": "alt text"}],
     )
     call_kwargs = agent.send_post.call_args.kwargs
     assert call_kwargs.get("embed") is not None
+
+
+def test_reply_to_mention_with_multiple_images_passes_all():
+    agent = _make_agent()
+    client = BlueskyClient(agent)
+    client.reply_to_mention(
+        _make_mention_obj(),
+        "DFC!",
+        images=[
+            {"blob": _make_blob_ref(), "alt": "front face"},
+            {"blob": _make_blob_ref(), "alt": "back face"},
+        ],
+    )
+    embed = agent.send_post.call_args.kwargs["embed"]
+    assert len(embed.images) == 2
 
 
 def test_reply_to_mention_without_image_no_embed():

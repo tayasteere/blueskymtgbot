@@ -229,45 +229,67 @@ def test_find_rulings_error_records_metric(mock_metric):
     mock_metric.assert_called_with("ScryfallApiError")
 
 
-# ── fetch_image ───────────────────────────────────────────────────────────────
+# ── fetch_images ──────────────────────────────────────────────────────────────
 
 
 @patch("bot.card_lookup.record_metric")
-def test_fetch_image_normal_card(mock_metric):
+def test_fetch_images_normal_card(mock_metric):
     client = MagicMock()
     client.get.return_value = _mock_response(200, content=b"\xff\xd8image")
     card = {**BOLT, "image_uris": {"normal": "https://cards.scryfall.io/img.jpg"}}
-    result = _make_lookup(client=client).fetch_image(card)  # type: ignore[arg-type]
-    assert result == b"\xff\xd8image"
+    result = _make_lookup(client=client).fetch_images(card)  # type: ignore[arg-type]
+    assert result == [b"\xff\xd8image"]
 
 
 @patch("bot.card_lookup.record_metric")
-def test_fetch_image_double_faced_card(mock_metric):
+def test_fetch_images_double_faced_card_returns_both_faces(mock_metric):
     client = MagicMock()
-    client.get.return_value = _mock_response(200, content=b"face0")
+    client.get.side_effect = [
+        _mock_response(200, content=b"face0"),
+        _mock_response(200, content=b"face1"),
+    ]
     card = {
-        "name": "Delver of Secrets",
+        "name": "Delver of Secrets // Insectile Aberration",
         "card_faces": [
             {"image_uris": {"normal": "https://cards.scryfall.io/front.jpg"}},
             {"image_uris": {"normal": "https://cards.scryfall.io/back.jpg"}},
         ],
     }
-    result = _make_lookup(client=client).fetch_image(card)  # type: ignore[arg-type]
-    assert result == b"face0"
-    client.get.assert_called_once_with("https://cards.scryfall.io/front.jpg")
+    result = _make_lookup(client=client).fetch_images(card)  # type: ignore[arg-type]
+    assert result == [b"face0", b"face1"]
+    assert client.get.call_count == 2
 
 
 @patch("bot.card_lookup.record_metric")
-def test_fetch_image_no_uri_returns_none(mock_metric):
-    result = _make_lookup().fetch_image({"name": "Card"})  # type: ignore[typeddict-item]
-    assert result is None
+def test_fetch_images_dfc_failed_face_excluded(mock_metric):
+    client = MagicMock()
+    client.get.side_effect = [
+        _mock_response(200, content=b"face0"),
+        _mock_response(404),
+    ]
+    card = {
+        "name": "Delver of Secrets // Insectile Aberration",
+        "card_faces": [
+            {"image_uris": {"normal": "https://cards.scryfall.io/front.jpg"}},
+            {"image_uris": {"normal": "https://cards.scryfall.io/back.jpg"}},
+        ],
+    }
+    result = _make_lookup(client=client).fetch_images(card)  # type: ignore[arg-type]
+    assert result == [b"face0"]
+    mock_metric.assert_called_with("ImageFetchFailure")
 
 
 @patch("bot.card_lookup.record_metric")
-def test_fetch_image_non_200_returns_none_and_records_metric(mock_metric):
+def test_fetch_images_no_uri_returns_empty(mock_metric):
+    result = _make_lookup().fetch_images({"name": "Card"})  # type: ignore[typeddict-item]
+    assert result == []
+
+
+@patch("bot.card_lookup.record_metric")
+def test_fetch_images_non_200_returns_empty_and_records_metric(mock_metric):
     client = MagicMock()
     client.get.return_value = _mock_response(404)
     card = {**BOLT, "image_uris": {"normal": "https://cards.scryfall.io/img.jpg"}}
-    result = _make_lookup(client=client).fetch_image(card)  # type: ignore[arg-type]
-    assert result is None
+    result = _make_lookup(client=client).fetch_images(card)  # type: ignore[arg-type]
+    assert result == []
     mock_metric.assert_called_with("ImageFetchFailure")

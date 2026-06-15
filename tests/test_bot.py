@@ -51,12 +51,12 @@ _DEFAULT_CARD = {
 }
 
 
-def _make_card_lookup(card=None, rulings=None, image=None):
+def _make_card_lookup(card=None, rulings=None, images=None):
     lookup = MagicMock()
     lookup.find_card.return_value = card or _DEFAULT_CARD
     lookup.random_card.return_value = _DEFAULT_CARD
     lookup.find_rulings.return_value = rulings if rulings is not None else []
-    lookup.fetch_image.return_value = image
+    lookup.fetch_images.return_value = images if images is not None else []
     return lookup
 
 
@@ -101,23 +101,23 @@ def test_normal_mode_replies_with_card_text(mock_metric):
 @patch("bot.bot.record_metric")
 def test_normal_mode_attaches_image(mock_metric):
     bluesky = _make_bluesky([_make_mention("[[Lightning Bolt]]")])
-    lookup = _make_card_lookup(image=b"\xff\xd8img")
+    lookup = _make_card_lookup(images=[b"\xff\xd8img"])
     bot = _make_bot(bluesky=bluesky, card_lookup=lookup)
     bot.process_mentions()
     bluesky.upload_image.assert_called_once()
-    image_arg = bluesky.reply_to_mention.call_args[0][2]
-    assert image_arg is not None
+    images_arg = bluesky.reply_to_mention.call_args[0][2]
+    assert images_arg is not None
 
 
 @patch("bot.bot.record_metric")
-def test_normal_mode_no_image_when_fetch_returns_none(mock_metric):
+def test_normal_mode_no_image_when_fetch_returns_empty(mock_metric):
     bluesky = _make_bluesky([_make_mention("[[Lightning Bolt]]")])
-    lookup = _make_card_lookup(image=None)
+    lookup = _make_card_lookup(images=[])
     bot = _make_bot(bluesky=bluesky, card_lookup=lookup)
     bot.process_mentions()
     args = bluesky.reply_to_mention.call_args[0]
-    image_arg = args[2] if len(args) > 2 else None
-    assert image_arg is None
+    images_arg = args[2] if len(args) > 2 else None
+    assert images_arg is None
 
 
 @patch("bot.bot.record_metric")
@@ -202,7 +202,7 @@ def test_rulings_mode_no_image(mock_metric):
 @patch("bot.bot.record_metric")
 def test_image_mode_replies_with_card_name(mock_metric):
     bluesky = _make_bluesky([_make_mention("[[!Lightning Bolt]]")])
-    lookup = _make_card_lookup(image=b"\xff\xd8img")
+    lookup = _make_card_lookup(images=[b"\xff\xd8img"])
     bot = _make_bot(bluesky=bluesky, card_lookup=lookup)
     bot.process_mentions()
     text = bluesky.reply_to_mention.call_args[0][1]
@@ -346,7 +346,7 @@ def test_image_mode_card_not_found_replies_with_message(mock_metric):
 def test_image_mode_fetch_error_still_replies(mock_metric):
     bluesky = _make_bluesky([_make_mention("[[!Lightning Bolt]]")])
     lookup = _make_card_lookup()
-    lookup.fetch_image.side_effect = RuntimeError("network error")
+    lookup.fetch_images.side_effect = RuntimeError("network error")
     bot = _make_bot(bluesky=bluesky, card_lookup=lookup)
     bot.process_mentions()
     bluesky.reply_to_mention.assert_called_once()
@@ -361,13 +361,13 @@ def test_image_mode_fetch_error_still_replies(mock_metric):
 def test_normal_mode_image_fetch_error_still_replies(mock_metric):
     bluesky = _make_bluesky([_make_mention("[[Lightning Bolt]]")])
     lookup = _make_card_lookup()
-    lookup.fetch_image.side_effect = RuntimeError("network error")
+    lookup.fetch_images.side_effect = RuntimeError("network error")
     bot = _make_bot(bluesky=bluesky, card_lookup=lookup)
     bot.process_mentions()
     bluesky.reply_to_mention.assert_called_once()
     args = bluesky.reply_to_mention.call_args[0]
-    image_arg = args[2] if len(args) > 2 else None
-    assert image_arg is None
+    images_arg = args[2] if len(args) > 2 else None
+    assert images_arg is None
 
 
 # ── card limit error handling ─────────────────────────────────────────────────
@@ -413,23 +413,23 @@ def test_random_mode_replies_with_card_text(mock_metric):
 @patch("bot.bot.record_metric")
 def test_random_mode_attaches_image(mock_metric):
     bluesky = _make_bluesky([_make_mention("[[*]]")])
-    lookup = _make_card_lookup(image=b"\xff\xd8img")
+    lookup = _make_card_lookup(images=[b"\xff\xd8img"])
     bot = _make_bot(bluesky=bluesky, card_lookup=lookup)
     bot.process_mentions()
     bluesky.upload_image.assert_called_once()
-    image_arg = bluesky.reply_to_mention.call_args[0][2]
-    assert image_arg is not None
+    images_arg = bluesky.reply_to_mention.call_args[0][2]
+    assert images_arg is not None
 
 
 @patch("bot.bot.record_metric")
-def test_random_mode_no_image_when_fetch_returns_none(mock_metric):
+def test_random_mode_no_image_when_fetch_returns_empty(mock_metric):
     bluesky = _make_bluesky([_make_mention("[[*]]")])
-    lookup = _make_card_lookup(image=None)
+    lookup = _make_card_lookup(images=[])
     bot = _make_bot(bluesky=bluesky, card_lookup=lookup)
     bot.process_mentions()
     args = bluesky.reply_to_mention.call_args[0]
-    image_arg = args[2] if len(args) > 2 else None
-    assert image_arg is None
+    images_arg = args[2] if len(args) > 2 else None
+    assert images_arg is None
 
 
 @patch("bot.bot.record_metric")
