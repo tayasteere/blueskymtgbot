@@ -1,6 +1,6 @@
 # Bluesky MTG Bot
 
-[![CI](https://github.com/tayasteere/blueskyscryfallbot/actions/workflows/ci.yml/badge.svg)](https://github.com/tayasteere/blueskyscryfallbot/actions/workflows/ci.yml)
+[![CI](https://github.com/tayasteere/blueskymtgbot/actions/workflows/ci.yml/badge.svg)](https://github.com/tayasteere/blueskymtgbot/actions/workflows/ci.yml)
 
 A Bluesky bot that looks up Magic: The Gathering cards via the [Scryfall API](https://scryfall.com/docs/api) and replies with card details, prices, rulings, legality, or card images.
 
@@ -37,7 +37,7 @@ Up to **4 cards** can be looked up per mention. Additional cards require a separ
 Mention the bot with the word **trivia** anywhere in your post to receive a random MTG trivia question:
 
 ```
-@scryfallbot.bsky.social trivia
+@mtgbot.bsky.social trivia
 ```
 
 The bot will reply with a question. Simply reply to that post with your answer — no need to @-mention the bot again. The bot will tell you whether you were correct and reveal the answer.
@@ -108,7 +108,7 @@ docker compose up -d --build
 
 ### systemd (Linux)
 
-For a VPS without Docker, create `/etc/systemd/system/scryfallbot.service`:
+For a VPS without Docker, create `/etc/systemd/system/mtgbot.service`:
 
 ```ini
 [Unit]
@@ -116,10 +116,10 @@ Description=Bluesky Scryfall Bot
 After=network.target
 
 [Service]
-User=scryfallbot
-WorkingDirectory=/opt/scryfallbot
-EnvironmentFile=/opt/scryfallbot/.env
-ExecStart=/opt/scryfallbot/.venv/bin/python -m bot.main
+User=mtgbot
+WorkingDirectory=/opt/mtgbot
+EnvironmentFile=/opt/mtgbot/.env
+ExecStart=/opt/mtgbot/.venv/bin/python -m bot.main
 Restart=always
 RestartSec=10
 
@@ -131,8 +131,8 @@ Then enable and start it:
 
 ```bash
 systemctl daemon-reload
-systemctl enable --now scryfallbot
-journalctl -fu scryfallbot   # follow logs
+systemctl enable --now mtgbot
+journalctl -fu mtgbot   # follow logs
 ```
 
 ### AWS
