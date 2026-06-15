@@ -124,9 +124,13 @@ class Bot:
 
                 question = self._trivia.get_random_question()
                 try:
-                    post_ref = self._bluesky.reply_to_mention(
-                        mention, format_trivia_post(question)
+                    chunks = split_into_chunks(
+                        format_trivia_post(question), MAX_POST_GRAPHEMES
                     )
+                    root = PostRef(uri=mention.root_uri, cid=mention.root_cid)
+                    post_ref = self._bluesky.reply_to_mention(mention, chunks[0])
+                    for chunk in chunks[1:]:
+                        post_ref = self._bluesky.reply_in_thread(root, post_ref, chunk)
                     self._trivia.set_pending(mention.author_did, question, post_ref.uri)
                     trivia_state_changed = True
                     record_metric("TriviaQuestionAsked")

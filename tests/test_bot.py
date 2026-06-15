@@ -845,6 +845,29 @@ def test_trivia_state_saver_called_after_answer(mock_metric):
 
 
 @patch("bot.bot.record_metric")
+def test_trivia_long_question_splits_into_thread(mock_metric):
+    # "🃏 [Rules] " prefix = 10 chars; 295-char question → 305 total > 300
+    long_question = "x" * 295
+    mention = _make_mention(text="trivia")
+    bluesky = _make_bluesky([mention])
+    bluesky.reply_to_mention.return_value = PostRef(uri=_TRIVIA_POST_URI, cid="c1")
+    mgr = _make_trivia_manager()
+    mgr.get_random_question.return_value = TriviaQuestion(
+        question=long_question,
+        answer="Lightning Bolt",
+        category="rules_text",
+        answer_type="card_name",
+        card_name="Lightning Bolt",
+        oracle_id="abc",
+    )
+    bot = _make_bot(bluesky=bluesky, trivia_manager=mgr)
+    bot.process_mentions()
+    bluesky.reply_in_thread.assert_called_once()
+    # set_pending must reference the last post so the user replies to the right post
+    assert mgr.set_pending.call_args[0][2] == "at://reply/2"
+
+
+@patch("bot.bot.record_metric")
 def test_no_trivia_manager_plain_replies_ignored(mock_metric):
     reply = _make_mention(text="something", reason="reply")
     bluesky = _make_bluesky([reply])
