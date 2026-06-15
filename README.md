@@ -1,4 +1,4 @@
-# Bluesky Scryfall Bot
+# Bluesky MTG Bot
 
 [![CI](https://github.com/tayasteere/blueskyscryfallbot/actions/workflows/ci.yml/badge.svg)](https://github.com/tayasteere/blueskyscryfallbot/actions/workflows/ci.yml)
 
@@ -9,7 +9,7 @@ A Bluesky bot that looks up Magic: The Gathering cards via the [Scryfall API](ht
 Mention the bot in any Bluesky post with card names wrapped in double brackets:
 
 ```
-@scryfallbot.bsky.social [[Lightning Bolt]]
+@mtgbot.bsky.social [[Lightning Bolt]]
 ```
 
 ### Query syntax
