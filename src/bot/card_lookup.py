@@ -23,6 +23,9 @@ class CardFace(TypedDict, total=False):
     oracle_text: str
     flavor_text: str
     artist: str
+    power: str
+    toughness: str
+    loyalty: str
 
 
 class CardPrices(TypedDict, total=False):
@@ -56,6 +59,9 @@ class CardData(TypedDict, total=False):
     rulings_uri: str
     flavor_text: str
     artist: str
+    power: str
+    toughness: str
+    loyalty: str
 
 
 class CardLookup:

@@ -21,6 +21,17 @@ _LEGALITY_LABELS: dict[str, str] = {
 _MAX_DISPLAY_GRAPHEMES = 50
 
 
+def _pt_loyalty(data: dict) -> str | None:
+    power = data.get("power")
+    toughness = data.get("toughness")
+    if power is not None and toughness is not None:
+        return f"{power}/{toughness}"
+    loyalty = data.get("loyalty")
+    if loyalty is not None:
+        return f"[{loyalty}]"
+    return None
+
+
 def format_card(card: CardData) -> str:
     name = card.get("name", "")
     mana_cost = card.get("mana_cost")
@@ -31,20 +42,27 @@ def format_card(card: CardData) -> str:
         p
         for p in [
             card.get("type_line"),
-            card.get("rarity"),
+            card.get("rarity", "").capitalize() or None,
             set_code.upper() if set_code else None,
         ]
         if p
     ]
     meta_line = " · ".join(meta_parts)
 
-    oracle_text = card.get("oracle_text")
-    if not oracle_text:
-        faces = card.get("card_faces") or []
-        face_texts = [f.get("oracle_text") for f in faces if f.get("oracle_text")]
-        oracle_text = "\n//\n".join(face_texts) if face_texts else None
+    faces = card.get("card_faces") or []
+    if faces:
+        face_parts = []
+        for face in faces:
+            segments = [p for p in [face.get("oracle_text"), _pt_loyalty(face)] if p]
+            if segments:
+                face_parts.append("\n".join(segments))
+        oracle_text = "\n//\n".join(face_parts) if face_parts else None
+        extra = None
+    else:
+        oracle_text = card.get("oracle_text")
+        extra = _pt_loyalty(card)
 
-    parts = [p for p in [name_line, meta_line, oracle_text] if p]
+    parts = [p for p in [name_line, meta_line, oracle_text, extra] if p]
     return "\n".join(parts)
 
 

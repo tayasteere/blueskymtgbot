@@ -31,7 +31,7 @@ def test_format_card_includes_name_and_mana_cost():
 
 def test_format_card_meta_line():
     result = format_card(BOLT)
-    assert "Instant · common · M10" in result
+    assert "Instant · Common · M10" in result
 
 
 def test_format_card_oracle_text():
@@ -52,6 +52,31 @@ def test_format_card_set_uppercased():
     assert "m10" not in result
 
 
+def test_format_card_creature_includes_power_toughness():
+    card = {**BOLT, "type_line": "Creature — Bear", "power": "2", "toughness": "2"}
+    result = format_card(card)  # type: ignore[arg-type]
+    assert "2/2" in result
+
+
+def test_format_card_planeswalker_includes_loyalty():
+    card = {
+        "name": "Jace",
+        "mana_cost": "{2}{U}{U}",
+        "type_line": "Legendary Planeswalker — Jace",
+        "oracle_text": "+2: Look at the top card.",
+        "rarity": "mythic",
+        "set": "wwk",
+        "loyalty": "3",
+    }
+    result = format_card(card)  # type: ignore[arg-type]
+    assert "[3]" in result
+
+
+def test_format_card_pt_loyalty_absent_for_non_creature():
+    result = format_card(BOLT)
+    assert "/" not in result.split("\n")[-1]  # last line is oracle text, not P/T
+
+
 def test_format_card_dfc_includes_oracle_text_from_both_faces():
     card = {
         "name": "Delver of Secrets // Insectile Aberration",
@@ -59,13 +84,16 @@ def test_format_card_dfc_includes_oracle_text_from_both_faces():
         "rarity": "uncommon",
         "set": "isd",
         "card_faces": [
-            {"oracle_text": "At the beginning of your upkeep, look at the top card."},
-            {"oracle_text": "Flying."},
+            {"oracle_text": "At the beginning of your upkeep, look at the top card.",
+             "power": "1", "toughness": "2"},
+            {"oracle_text": "Flying.", "power": "3", "toughness": "2"},
         ],
     }
     result = format_card(card)  # type: ignore[arg-type]
     assert "At the beginning of your upkeep" in result
     assert "Flying." in result
+    assert "1/2" in result
+    assert "3/2" in result
 
 
 # ── split_into_chunks ─────────────────────────────────────────────────────────
