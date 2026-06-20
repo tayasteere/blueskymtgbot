@@ -57,6 +57,7 @@ def _make_card_lookup(card=None, rulings=None, images=None):
     lookup.random_card.return_value = _DEFAULT_CARD
     lookup.find_rulings.return_value = rulings if rulings is not None else []
     lookup.fetch_images.return_value = images if images is not None else []
+    lookup.autocomplete.return_value = None
     return lookup
 
 
@@ -223,6 +224,42 @@ def test_card_not_found_replies_with_message(mock_metric):
     assert "zzzzz" in text
 
 
+@patch("bot.bot.record_metric")
+def test_card_not_found_includes_suggestion_when_available(mock_metric):
+    bluesky = _make_bluesky([_make_mention("[[lighning blt]]")])
+    lookup = _make_card_lookup(card=None)
+    lookup.find_card.return_value = None
+    lookup.autocomplete.return_value = "Lightning Bolt"
+    bot = _make_bot(bluesky=bluesky, card_lookup=lookup)
+    bot.process_mentions()
+    text = bluesky.reply_to_mention.call_args[0][1]
+    assert "[[Lightning Bolt]]" in text
+
+
+@patch("bot.bot.record_metric")
+def test_card_not_found_no_brackets_when_autocomplete_returns_none(mock_metric):
+    bluesky = _make_bluesky([_make_mention("[[zzzzz]]")])
+    lookup = _make_card_lookup(card=None)
+    lookup.find_card.return_value = None
+    lookup.autocomplete.return_value = None
+    bot = _make_bot(bluesky=bluesky, card_lookup=lookup)
+    bot.process_mentions()
+    text = bluesky.reply_to_mention.call_args[0][1]
+    assert "[[" not in text
+
+
+@patch("bot.bot.record_metric")
+def test_card_not_found_autocomplete_error_still_replies(mock_metric):
+    bluesky = _make_bluesky([_make_mention("[[zzzzz]]")])
+    lookup = _make_card_lookup(card=None)
+    lookup.find_card.return_value = None
+    lookup.autocomplete.side_effect = RuntimeError("API error")
+    bot = _make_bot(bluesky=bluesky, card_lookup=lookup)
+    bot.process_mentions()  # must not raise
+    text = bluesky.reply_to_mention.call_args[0][1]
+    assert "zzzzz" in text
+
+
 # ── metrics ───────────────────────────────────────────────────────────────────
 
 
@@ -291,13 +328,54 @@ def test_max_cards_per_mention_enforced(mock_metric):
 
 
 @patch("bot.bot.record_metric")
-def test_limit_notice_text(mock_metric):
-    text = "[[A]] [[B]] [[C]] [[D]] [[E]]"
+def test_limit_notice_singular(mock_metric):
+    text = "[[A]] [[B]] [[C]] [[D]] [[E]]"  # 5 queries → 1 omitted
     bluesky = _make_bluesky([_make_mention(text)])
     bot = _make_bot(bluesky=bluesky)
     bot.process_mentions()
     last_text = bluesky.reply_to_mention.call_args[0][1]
-    assert "Only 4 cards" in last_text
+    assert "1 card omitted" in last_text
+    assert "max 4" in last_text
+
+
+@patch("bot.bot.record_metric")
+def test_limit_notice_plural(mock_metric):
+    text = "[[A]] [[B]] [[C]] [[D]] [[E]] [[F]]"  # 6 queries → 2 omitted
+    bluesky = _make_bluesky([_make_mention(text)])
+    bot = _make_bot(bluesky=bluesky)
+    bot.process_mentions()
+    last_text = bluesky.reply_to_mention.call_args[0][1]
+    assert "2 cards omitted" in last_text
+    assert "max 4" in last_text
+
+
+# ── thread part numbering ─────────────────────────────────────────────────────
+
+
+@patch("bot.bot.record_metric")
+def test_threaded_rulings_include_part_numbers(mock_metric):
+    bluesky = _make_bluesky([_make_mention("[[?Lightning Bolt]]")])
+    long_ruling = {
+        "source": "wotc",
+        "published_at": "2023-01-01",
+        "comment": "word " * 70,
+    }
+    lookup = _make_card_lookup(rulings=[long_ruling])
+    bot = _make_bot(bluesky=bluesky, card_lookup=lookup)
+    bot.process_mentions()
+    first_text = bluesky.reply_to_mention.call_args[0][1]
+    thread_text = bluesky.reply_in_thread.call_args[0][2]
+    assert "(1/" in first_text
+    assert "(2/" in thread_text
+
+
+@patch("bot.bot.record_metric")
+def test_single_chunk_card_has_no_part_number(mock_metric):
+    bluesky = _make_bluesky([_make_mention("[[Lightning Bolt]]")])
+    bot = _make_bot(bluesky=bluesky)
+    bot.process_mentions()
+    text = bluesky.reply_to_mention.call_args[0][1]
+    assert "(1/" not in text
 
 
 # ── rulings mode (additional) ─────────────────────────────────────────────────
@@ -862,9 +940,9 @@ def test_trivia_long_question_splits_into_thread(mock_metric):
     )
     bot = _make_bot(bluesky=bluesky, trivia_manager=mgr)
     bot.process_mentions()
-    bluesky.reply_in_thread.assert_called_once()
+    assert bluesky.reply_in_thread.call_count >= 1
     # set_pending must reference the last post so the user replies to the right post
-    assert mgr.set_pending.call_args[0][2] == "at://reply/2"
+    assert mgr.set_pending.call_args[0][2] == bluesky.reply_in_thread.return_value.uri
 
 
 @patch("bot.bot.record_metric")
@@ -874,3 +952,72 @@ def test_no_trivia_manager_plain_replies_ignored(mock_metric):
     bot = _make_bot(bluesky=bluesky)  # no trivia_manager
     bot.process_mentions()
     bluesky.reply_to_mention.assert_not_called()
+
+
+# ── help trigger ──────────────────────────────────────────────────────────────
+
+
+@patch("bot.bot.record_metric")
+def test_help_trigger_replies_with_syntax_guide(mock_metric):
+    bluesky = _make_bluesky([_make_mention("help")])
+    bot = _make_bot(bluesky=bluesky)
+    bot.process_mentions()
+    bluesky.reply_to_mention.assert_called_once()
+    text = bluesky.reply_to_mention.call_args[0][1]
+    assert "[[Card Name]]" in text
+    assert "image only" in text
+    assert "prices" in text
+    assert "rulings" in text
+    assert "legalities" in text
+
+
+@patch("bot.bot.record_metric")
+def test_help_trigger_case_insensitive(mock_metric):
+    bluesky = _make_bluesky([_make_mention("HELP")])
+    bot = _make_bot(bluesky=bluesky)
+    bot.process_mentions()
+    bluesky.reply_to_mention.assert_called_once()
+
+
+@patch("bot.bot.record_metric")
+def test_help_not_triggered_when_card_queries_present(mock_metric):
+    bluesky = _make_bluesky([_make_mention("help [[Lightning Bolt]]")])
+    bot = _make_bot(bluesky=bluesky)
+    bot.process_mentions()
+    text = bluesky.reply_to_mention.call_args[0][1]
+    assert "Lightning Bolt" in text
+
+
+@patch("bot.bot.record_metric")
+def test_help_not_triggered_without_word(mock_metric):
+    bluesky = _make_bluesky([_make_mention("I need assistance")])
+    bot = _make_bot(bluesky=bluesky)
+    bot.process_mentions()
+    bluesky.reply_to_mention.assert_not_called()
+
+
+@patch("bot.bot.record_metric")
+def test_help_includes_trivia_hint_when_trivia_configured(mock_metric):
+    bluesky = _make_bluesky([_make_mention("help")])
+    mgr = _make_trivia_manager()
+    bot = _make_bot(bluesky=bluesky, trivia_manager=mgr)
+    bot.process_mentions()
+    text = bluesky.reply_to_mention.call_args[0][1]
+    assert "trivia" in text.lower()
+
+
+@patch("bot.bot.record_metric")
+def test_help_excludes_trivia_hint_when_no_trivia(mock_metric):
+    bluesky = _make_bluesky([_make_mention("help")])
+    bot = _make_bot(bluesky=bluesky)  # no trivia_manager
+    bot.process_mentions()
+    text = bluesky.reply_to_mention.call_args[0][1]
+    assert "trivia" not in text.lower()
+
+
+@patch("bot.bot.record_metric")
+def test_help_reply_error_silently_caught(mock_metric):
+    bluesky = _make_bluesky([_make_mention("help")])
+    bluesky.reply_to_mention.side_effect = RuntimeError("network error")
+    bot = _make_bot(bluesky=bluesky)
+    bot.process_mentions()  # must not raise

@@ -30,16 +30,32 @@ class _FileStateStore:
     def __init__(self, path: Path) -> None:
         self._path = path
 
-    def load(self) -> str | None:
+    def _read(self) -> dict:
         try:
-            data = json.loads(self._path.read_text())
-            return data.get("lastSeenAt")
+            return json.loads(self._path.read_text())
         except Exception:
-            # Missing or unreadable file is expected on first run
-            return None
+            return {}
+
+    def load(self) -> str | None:
+        return self._read().get("lastSeenAt")
 
     def save(self, last_seen_at: str) -> None:
-        self._path.write_text(json.dumps({"lastSeenAt": last_seen_at}))
+        data = self._read()
+        data["lastSeenAt"] = last_seen_at
+        self._path.write_text(json.dumps(data))
+
+    def load_jetstream_cursor(self) -> int | None:
+        return self._read().get("jetstreamCursor")
+
+    def save_jetstream_cursor(self, cursor: int | None) -> None:
+        if cursor is None:
+            return
+        try:
+            data = self._read()
+            data["jetstreamCursor"] = cursor
+            self._path.write_text(json.dumps(data))
+        except Exception as err:
+            print(f"Warning: could not save Jetstream cursor: {err}", file=sys.stderr)
 
 
 def _login_with_retry(bluesky: BlueskyClient, handle: str, password: str) -> None:
@@ -131,7 +147,21 @@ def main() -> None:
             trivia_manager = None
 
     rate_limiter = RateLimiter(config.rate_limiting, blocked_dids=blocked_dids)
-    card_lookup = CardLookup(user_agent=user_agent)
+    card_lookup = CardLookup(user_agent=user_agent, cache_ttl=config.cache_ttl_seconds)
+
+    jetstream_listener = None
+    jetstream_cursor_saver = None
+    if config.use_jetstream:
+        from .jetstream import JetstreamListener
+
+        state_store = _FileStateStore(_STATE_FILE)
+        cursor = state_store.load_jetstream_cursor()
+        jetstream_listener = JetstreamListener(
+            bot_did=bluesky.bot_did,
+            cursor=cursor,
+        )
+        jetstream_cursor_saver = state_store.save_jetstream_cursor
+
     bot = Bot(
         bluesky,
         card_lookup,
@@ -140,6 +170,8 @@ def main() -> None:
         blocks_initialized=blocks_initialized,
         trivia_manager=trivia_manager,
         trivia_state_saver=trivia_state_saver,
+        jetstream_listener=jetstream_listener,
+        jetstream_cursor_saver=jetstream_cursor_saver,
     )
     bot.start()
 

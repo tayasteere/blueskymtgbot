@@ -1,11 +1,13 @@
 from bot.card_formatter import (
     card_not_found_message,
+    chunked_and_numbered,
     format_card,
     format_card_alt_text,
     format_face_alt_text,
     format_legalities,
     format_prices,
     format_rulings,
+    number_chunks,
     scryfall_error_message,
     split_into_chunks,
 )
@@ -136,6 +138,48 @@ def test_split_multi_chunk_content_preserved():
     assert all(len(list(c)) <= 15 for c in chunks)
 
 
+# ── number_chunks ────────────────────────────────────────────────────────────
+
+
+def test_number_chunks_empty_unchanged():
+    assert number_chunks([]) == []
+
+
+def test_number_chunks_single_unchanged():
+    assert number_chunks(["only chunk"]) == ["only chunk"]
+
+
+def test_number_chunks_multiple_adds_prefix():
+    assert number_chunks(["alpha", "beta", "gamma"]) == [
+        "(1/3) alpha",
+        "(2/3) beta",
+        "(3/3) gamma",
+    ]
+
+
+# ── chunked_and_numbered ──────────────────────────────────────────────────────
+
+
+def test_chunked_and_numbered_short_text_no_prefix():
+    result = chunked_and_numbered("short text", 300)
+    assert result == ["short text"]
+
+
+def test_chunked_and_numbered_multi_chunk_has_prefixes():
+    long_text = "word " * 100
+    chunks = chunked_and_numbered(long_text, 300)
+    assert len(chunks) > 1
+    assert chunks[0].startswith("(1/")
+    assert chunks[-1].startswith(f"({len(chunks)}/{len(chunks)})")
+
+
+def test_chunked_and_numbered_numbered_chunks_fit_within_limit():
+    long_text = "w" * 1200  # no word boundaries → hard cuts
+    chunks = chunked_and_numbered(long_text, 300)
+    for chunk in chunks:
+        assert len(list(chunk)) <= 300
+
+
 # ── format_prices ─────────────────────────────────────────────────────────────
 
 
@@ -264,6 +308,17 @@ def test_format_rulings_with_rulings():
 def test_card_not_found_message():
     result = card_not_found_message("zzzzz")
     assert '"zzzzz"' in result
+
+
+def test_card_not_found_message_with_suggestion():
+    result = card_not_found_message("lighning blt", "Lightning Bolt")
+    assert '"lighning blt"' in result
+    assert "[[Lightning Bolt]]" in result
+
+
+def test_card_not_found_message_no_brackets_without_suggestion():
+    result = card_not_found_message("zzzzz")
+    assert "[[" not in result
 
 
 def test_scryfall_error_message():

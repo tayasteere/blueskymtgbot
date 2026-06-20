@@ -54,6 +54,10 @@ class BlueskyClient:
     def login(self, identifier: str, password: str) -> None:
         self._agent.login(identifier, password)
 
+    @property
+    def bot_did(self) -> str:
+        return self._agent.me.did
+
     def get_new_mentions(self) -> list[Mention]:
         response = self._agent.app.bsky.notification.list_notifications(
             params={"limit": 50}

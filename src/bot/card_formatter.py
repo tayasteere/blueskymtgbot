@@ -139,6 +139,24 @@ def split_into_chunks(text: str, limit: int) -> list[str]:
     return chunks
 
 
+_THREAD_NUMBER_OVERHEAD = 8  # enough room for "(99/99) "
+
+
+def number_chunks(chunks: list[str]) -> list[str]:
+    if len(chunks) <= 1:
+        return chunks
+    total = len(chunks)
+    return [f"({i + 1}/{total}) {chunk}" for i, chunk in enumerate(chunks)]
+
+
+def chunked_and_numbered(text: str, limit: int) -> list[str]:
+    chunks = split_into_chunks(text, limit)
+    if len(chunks) <= 1:
+        return chunks
+    chunks = split_into_chunks(text, limit - _THREAD_NUMBER_OVERHEAD)
+    return number_chunks(chunks)
+
+
 def format_prices(card: CardData) -> str:
     name = card.get("name", "")
     set_code = card.get("set")
@@ -208,11 +226,11 @@ def scryfall_error_message(card_name: str) -> str:
     return f'Something went wrong looking up "{display}". Please try again later.'
 
 
-def card_not_found_message(card_name: str) -> str:
+def card_not_found_message(card_name: str, suggestion: str | None = None) -> str:
     chars = list(card_name)
     display = "".join(chars[:_MAX_DISPLAY_GRAPHEMES])
     if len(chars) > _MAX_DISPLAY_GRAPHEMES:
         display += "…"
-    return (
-        f'Could not determine the card based on "{display}". Please be more specific.'
-    )
+    if suggestion:
+        return f'Could not find "{display}". Did you mean: [[{suggestion}]]?'
+    return f'Could not find "{display}". Please check the spelling.'

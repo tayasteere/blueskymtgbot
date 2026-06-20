@@ -1,6 +1,6 @@
 import time
 import urllib.parse
-from typing import Literal, TypedDict
+from typing import Any, Literal, TypedDict
 
 import httpx
 
@@ -64,6 +64,10 @@ class CardData(TypedDict, total=False):
     loyalty: str
 
 
+_CACHE_MISS = object()
+DEFAULT_CACHE_TTL_S: float = 3600.0
+
+
 class CardLookup:
     BASE_URL = "https://api.scryfall.com"
     MIN_REQUEST_INTERVAL_S = 1.0
@@ -75,6 +79,7 @@ class CardLookup:
         client: httpx.Client | None = None,
         sleep_fn=None,
         clock_fn=None,
+        cache_ttl: float = DEFAULT_CACHE_TTL_S,
     ) -> None:
         self._client = client or httpx.Client(
             headers={"User-Agent": user_agent, "Accept": "application/json"},
@@ -82,6 +87,22 @@ class CardLookup:
         self._sleep = sleep_fn or time.sleep
         self._clock = clock_fn or time.monotonic
         self._last_request_at: float = 0.0
+        self._cache_ttl = cache_ttl
+        self._cache: dict[tuple, tuple[float, Any]] = {}
+
+    def _cache_get(self, key: tuple) -> Any:
+        entry = self._cache.get(key)
+        if entry is None:
+            return _CACHE_MISS
+        expires_at, value = entry
+        if self._clock() >= expires_at:
+            del self._cache[key]
+            return _CACHE_MISS
+        return value
+
+    def _cache_set(self, key: tuple, value: Any) -> None:
+        if self._cache_ttl > 0:
+            self._cache[key] = (self._clock() + self._cache_ttl, value)
 
     # Enforces Scryfall's rate limit policy: no more than one request per second.
     # On 429, waits 30 seconds and retries once before returning the response.
@@ -111,6 +132,11 @@ class CardLookup:
         set_code: str | None = None,
         collector_number: str | None = None,
     ) -> CardData | None:
+        cache_key = ("card", name.lower(), set_code, collector_number)
+        cached = self._cache_get(cache_key)
+        if cached is not _CACHE_MISS:
+            return cached
+
         if set_code and collector_number:
             url = (
                 f"{self.BASE_URL}/cards"
@@ -130,6 +156,7 @@ class CardLookup:
 
         # 404 = no match; 422 = ambiguous (multiple possible cards)
         if response.status_code in (404, 422):
+            self._cache_set(cache_key, None)
             return None
 
         if not response.is_success:
@@ -138,7 +165,24 @@ class CardLookup:
                 f"Scryfall API error: {response.status_code} {response.reason_phrase}"
             )
 
-        return response.json()
+        result: CardData = response.json()
+        self._cache_set(cache_key, result)
+        return result
+
+    def autocomplete(self, query: str) -> str | None:
+        cache_key = ("autocomplete", query.lower())
+        cached = self._cache_get(cache_key)
+        if cached is not _CACHE_MISS:
+            return cached
+
+        url = f"{self.BASE_URL}/cards/autocomplete?q={urllib.parse.quote(query)}"
+        response = self._throttled_fetch(url)
+        if not response.is_success:
+            return None  # don't cache errors
+        data = response.json().get("data", [])
+        result: str | None = data[0] if data else None
+        self._cache_set(cache_key, result)
+        return result
 
     def random_card(self) -> CardData:
         response = self._throttled_fetch(f"{self.BASE_URL}/cards/random")
@@ -154,6 +198,11 @@ class CardLookup:
         if not rulings_uri:
             return []
 
+        cache_key = ("rulings", rulings_uri)
+        cached = self._cache_get(cache_key)
+        if cached is not _CACHE_MISS:
+            return cached
+
         response = self._throttled_fetch(rulings_uri)
 
         if not response.is_success:
@@ -162,7 +211,9 @@ class CardLookup:
                 f"Scryfall API error: {response.status_code} {response.reason_phrase}"
             )
 
-        return response.json()["data"]
+        result: list[Ruling] = response.json()["data"]
+        self._cache_set(cache_key, result)
+        return result
 
     def fetch_images(self, card: CardData) -> list[bytes]:
         card_faces = card.get("card_faces")

@@ -19,6 +19,8 @@ class BotConfig:
     poll_interval_seconds: float = 5.0
     max_cards_per_mention: int = 4
     metrics_enabled: bool = True
+    cache_ttl_seconds: float = 3600.0
+    use_jetstream: bool = False
     rate_limiting: RateLimitConfig = field(default_factory=RateLimitConfig)
     trivia_question_bank_path: str | None = None
     trivia_timeout_hours: float = 24.0
@@ -48,6 +50,8 @@ def load_config(path: Path) -> BotConfig:
         poll_interval_seconds=bot.get("poll_interval_seconds", 5.0),
         max_cards_per_mention=bot.get("max_cards_per_mention", 4),
         metrics_enabled=bot.get("metrics_enabled", True),
+        cache_ttl_seconds=bot.get("cache_ttl_seconds", 3600.0),
+        use_jetstream=bot.get("use_jetstream", False),
         rate_limiting=RateLimitConfig(
             window_seconds=rl.get("window_seconds", 60.0),
             max_mentions_per_window=rl.get("max_mentions_per_window", 5),

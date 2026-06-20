@@ -17,7 +17,9 @@ def _mock_response(status_code: int, json_data=None, content: bytes = b""):
     return r
 
 
-def _make_lookup(client=None, sleep_fn=None, clock_fn=None) -> CardLookup:
+def _make_lookup(
+    client=None, sleep_fn=None, clock_fn=None, cache_ttl=None
+) -> CardLookup:
     kwargs = {"user_agent": _USER_AGENT}
     if client is not None:
         kwargs["client"] = client
@@ -25,6 +27,8 @@ def _make_lookup(client=None, sleep_fn=None, clock_fn=None) -> CardLookup:
         kwargs["sleep_fn"] = sleep_fn
     if clock_fn is not None:
         kwargs["clock_fn"] = clock_fn
+    if cache_ttl is not None:
+        kwargs["cache_ttl"] = cache_ttl
     return CardLookup(**kwargs)
 
 
@@ -128,7 +132,7 @@ def test_rate_limit_sleep_between_fast_requests(mock_metric):
         clock_fn=lambda: next(iter([0.0, 0.0, 0.3, 0.3])),
     )
     lookup._last_request_at = 0.0
-    lookup._clock = iter([0.3, 0.3]).__next__  # type: ignore[assignment]
+    lookup._clock = lambda: 0.3  # type: ignore[assignment]
     lookup.find_card("Lightning Bolt")
     assert sleep_calls and sleep_calls[0] == pytest.approx(0.7, abs=0.01)
 
@@ -138,12 +142,10 @@ def test_rate_limit_no_sleep_when_enough_time_elapsed(mock_metric):
     client = MagicMock()
     client.get.return_value = _mock_response(200, BOLT)
     sleep_calls: list[float] = []
-    # clock returns 1.5s since last request — no sleep needed
-    clock_values = iter([1.5, 1.5])
     lookup = _make_lookup(
         client=client,
         sleep_fn=lambda s: sleep_calls.append(s),
-        clock_fn=lambda: next(clock_values),
+        clock_fn=lambda: 1.5,  # constant: 1.5s always elapsed, no sleep needed
     )
     lookup._last_request_at = 0.0
     lookup.find_card("Lightning Bolt")
@@ -168,6 +170,47 @@ def test_429_records_metric_and_retries(mock_metric):
     assert client.get.call_count == 2
     assert any(s == CardLookup.RATE_LIMIT_BACKOFF_S for s in sleep_calls)
     mock_metric.assert_any_call("RateLimitHit")
+
+
+# ── autocomplete ─────────────────────────────────────────────────────────────
+
+
+@patch("bot.card_lookup.record_metric")
+def test_autocomplete_returns_first_suggestion(mock_metric):
+    client = MagicMock()
+    client.get.return_value = _mock_response(
+        200, {"data": ["Lightning Bolt", "Lightning Strike"]}
+    )
+    result = _make_lookup(client=client, sleep_fn=lambda _: None).autocomplete(
+        "lighning blt"
+    )
+    assert result == "Lightning Bolt"
+
+
+@patch("bot.card_lookup.record_metric")
+def test_autocomplete_no_results_returns_none(mock_metric):
+    client = MagicMock()
+    client.get.return_value = _mock_response(200, {"data": []})
+    result = _make_lookup(client=client, sleep_fn=lambda _: None).autocomplete("xyzzy")
+    assert result is None
+
+
+@patch("bot.card_lookup.record_metric")
+def test_autocomplete_error_response_returns_none(mock_metric):
+    client = MagicMock()
+    client.get.return_value = _mock_response(500)
+    result = _make_lookup(client=client, sleep_fn=lambda _: None).autocomplete("bolt")
+    assert result is None
+
+
+@patch("bot.card_lookup.record_metric")
+def test_autocomplete_calls_correct_url(mock_metric):
+    client = MagicMock()
+    client.get.return_value = _mock_response(200, {"data": ["Lightning Bolt"]})
+    _make_lookup(client=client, sleep_fn=lambda _: None).autocomplete("lightning bolt")
+    client.get.assert_called_once_with(
+        "https://api.scryfall.com/cards/autocomplete?q=lightning%20bolt"
+    )
 
 
 # ── random_card ───────────────────────────────────────────────────────────────
@@ -293,3 +336,122 @@ def test_fetch_images_non_200_returns_empty_and_records_metric(mock_metric):
     result = _make_lookup(client=client).fetch_images(card)  # type: ignore[arg-type]
     assert result == []
     mock_metric.assert_called_with("ImageFetchFailure")
+
+
+# ── caching ───────────────────────────────────────────────────────────────────
+
+
+@patch("bot.card_lookup.record_metric")
+def test_find_card_cached_on_second_call(mock_metric):
+    client = MagicMock()
+    client.get.return_value = _mock_response(200, BOLT)
+    lookup = _make_lookup(client=client, sleep_fn=lambda _: None,
+                          clock_fn=lambda: 0.0, cache_ttl=60.0)
+    lookup.find_card("Lightning Bolt")
+    lookup.find_card("Lightning Bolt")
+    assert client.get.call_count == 1
+
+
+@patch("bot.card_lookup.record_metric")
+def test_find_card_cache_expires_after_ttl(mock_metric):
+    client = MagicMock()
+    client.get.return_value = _mock_response(200, BOLT)
+    clock_time = [0.0]
+    lookup = _make_lookup(client=client, sleep_fn=lambda _: None,
+                          clock_fn=lambda: clock_time[0], cache_ttl=10.0)
+    lookup.find_card("Lightning Bolt")
+    clock_time[0] = 11.0
+    lookup.find_card("Lightning Bolt")
+    assert client.get.call_count == 2
+
+
+@patch("bot.card_lookup.record_metric")
+def test_find_card_caches_not_found_result(mock_metric):
+    client = MagicMock()
+    client.get.return_value = _mock_response(404)
+    lookup = _make_lookup(client=client, sleep_fn=lambda _: None,
+                          clock_fn=lambda: 0.0, cache_ttl=60.0)
+    assert lookup.find_card("zzzzz") is None
+    assert lookup.find_card("zzzzz") is None
+    assert client.get.call_count == 1
+
+
+@patch("bot.card_lookup.record_metric")
+def test_find_card_cache_key_is_case_insensitive(mock_metric):
+    client = MagicMock()
+    client.get.return_value = _mock_response(200, BOLT)
+    lookup = _make_lookup(client=client, sleep_fn=lambda _: None,
+                          clock_fn=lambda: 0.0, cache_ttl=60.0)
+    lookup.find_card("Lightning Bolt")
+    lookup.find_card("lightning bolt")
+    assert client.get.call_count == 1
+
+
+@patch("bot.card_lookup.record_metric")
+def test_find_card_error_not_cached(mock_metric):
+    client = MagicMock()
+    client.get.return_value = _mock_response(500)
+    lookup = _make_lookup(client=client, sleep_fn=lambda _: None,
+                          clock_fn=lambda: 0.0, cache_ttl=60.0)
+    with pytest.raises(RuntimeError):
+        lookup.find_card("Lightning Bolt")
+    with pytest.raises(RuntimeError):
+        lookup.find_card("Lightning Bolt")
+    assert client.get.call_count == 2
+
+
+@patch("bot.card_lookup.record_metric")
+def test_find_card_cache_disabled_when_ttl_zero(mock_metric):
+    client = MagicMock()
+    client.get.return_value = _mock_response(200, BOLT)
+    lookup = _make_lookup(client=client, sleep_fn=lambda _: None,
+                          clock_fn=lambda: 0.0, cache_ttl=0.0)
+    lookup.find_card("Lightning Bolt")
+    lookup.find_card("Lightning Bolt")
+    assert client.get.call_count == 2
+
+
+@patch("bot.card_lookup.record_metric")
+def test_random_card_not_cached(mock_metric):
+    client = MagicMock()
+    client.get.return_value = _mock_response(200, BOLT)
+    lookup = _make_lookup(client=client, sleep_fn=lambda _: None,
+                          clock_fn=lambda: 0.0, cache_ttl=60.0)
+    lookup.random_card()
+    lookup.random_card()
+    assert client.get.call_count == 2
+
+
+@patch("bot.card_lookup.record_metric")
+def test_find_rulings_cached(mock_metric):
+    client = MagicMock()
+    rulings = [{"source": "wotc", "published_at": "2023-01-01", "comment": "Rule."}]
+    client.get.return_value = _mock_response(200, {"data": rulings})
+    card = {**BOLT, "rulings_uri": "https://api.scryfall.com/cards/abc/rulings"}
+    lookup = _make_lookup(client=client, sleep_fn=lambda _: None,
+                          clock_fn=lambda: 0.0, cache_ttl=60.0)
+    lookup.find_rulings(card)  # type: ignore[arg-type]
+    lookup.find_rulings(card)  # type: ignore[arg-type]
+    assert client.get.call_count == 1
+
+
+@patch("bot.card_lookup.record_metric")
+def test_autocomplete_cached(mock_metric):
+    client = MagicMock()
+    client.get.return_value = _mock_response(200, {"data": ["Lightning Bolt"]})
+    lookup = _make_lookup(client=client, sleep_fn=lambda _: None,
+                          clock_fn=lambda: 0.0, cache_ttl=60.0)
+    lookup.autocomplete("lightning")
+    lookup.autocomplete("lightning")
+    assert client.get.call_count == 1
+
+
+@patch("bot.card_lookup.record_metric")
+def test_autocomplete_cache_key_is_case_insensitive(mock_metric):
+    client = MagicMock()
+    client.get.return_value = _mock_response(200, {"data": ["Lightning Bolt"]})
+    lookup = _make_lookup(client=client, sleep_fn=lambda _: None,
+                          clock_fn=lambda: 0.0, cache_ttl=60.0)
+    lookup.autocomplete("Lightning")
+    lookup.autocomplete("lightning")
+    assert client.get.call_count == 1

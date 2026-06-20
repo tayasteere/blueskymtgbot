@@ -13,6 +13,18 @@ def test_record_metric_writes_valid_json(capsys):
     assert data["_aws"]["CloudWatchMetrics"][0]["Namespace"] == "ScryfallBot"
 
 
+def test_record_metric_custom_value(capsys):
+    record_metric("CardsInMention", value=3)
+    data = json.loads(capsys.readouterr().out.strip())
+    assert data["CardsInMention"] == 3
+
+
+def test_record_metric_default_value_is_one(capsys):
+    record_metric("TestMetric")
+    data = json.loads(capsys.readouterr().out.strip())
+    assert data["TestMetric"] == 1
+
+
 def test_record_metric_name_in_metrics_list(capsys):
     record_metric("MentionProcessed")
     data = json.loads(capsys.readouterr().out.strip())

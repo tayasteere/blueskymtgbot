@@ -11,7 +11,11 @@ def set_enabled(enabled: bool) -> None:
     _enabled = enabled
 
 
-def record_metric(name: str, dimensions: dict[str, str] | None = None) -> None:
+def record_metric(
+    name: str,
+    dimensions: dict[str, str] | None = None,
+    value: int = 1,
+) -> None:
     if not _enabled:
         return
     try:
@@ -27,7 +31,7 @@ def record_metric(name: str, dimensions: dict[str, str] | None = None) -> None:
                     }
                 ],
             },
-            name: 1,
+            name: value,
             **(dimensions or {}),
         }
         print(json.dumps(entry))
