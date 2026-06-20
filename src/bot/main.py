@@ -159,6 +159,7 @@ def main() -> None:
         jetstream_listener = JetstreamListener(
             bot_did=bluesky.bot_did,
             cursor=cursor,
+            url=config.jetstream_url,
         )
         jetstream_cursor_saver = state_store.save_jetstream_cursor
 

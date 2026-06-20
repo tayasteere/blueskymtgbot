@@ -110,6 +110,7 @@ max_cards_per_mention = 4   # maximum cards looked up in a single mention
 metrics_enabled = true      # set to false to disable metric output
 cache_ttl_seconds = 3600    # Scryfall response cache lifetime; 0 disables caching
 use_jetstream = false       # set to true to use Jetstream instead of polling
+jetstream_url = "wss://jetstream1.us-east.bsky.network/subscribe"  # or jetstream2
 
 [rate_limiting]
 window_seconds = 60              # length of the rate limit window

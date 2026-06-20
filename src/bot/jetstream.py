@@ -5,14 +5,14 @@ import time
 
 from .bluesky_client import Mention
 
-_JETSTREAM_URL = "wss://jetstream2.us-east.bsky.network/subscribe"
+_JETSTREAM_URL_DEFAULT = "wss://jetstream1.us-east.bsky.network/subscribe"
 _COLLECTION = "app.bsky.feed.post"
 _FACET_MENTION = "app.bsky.richtext.facet#mention"
 _RECONNECT_DELAYS_S = [1, 2, 5, 10, 30, 60]
 
 
-def _build_url(cursor: int | None = None) -> str:
-    url = f"{_JETSTREAM_URL}?wantedCollections={_COLLECTION}"
+def _build_url(base_url: str, cursor: int | None = None) -> str:
+    url = f"{base_url}?wantedCollections={_COLLECTION}"
     if cursor is not None:
         url += f"&cursor={cursor}"
     return url
@@ -97,10 +97,12 @@ class JetstreamListener:
         bot_did: str,
         cursor: int | None = None,
         sleep_fn=None,
+        url: str = _JETSTREAM_URL_DEFAULT,
     ) -> None:
         self._bot_did = bot_did
         self._cursor = cursor
         self._sleep = sleep_fn or time.sleep
+        self._url = url
 
     @property
     def cursor(self) -> int | None:
@@ -124,7 +126,7 @@ class JetstreamListener:
         reply_to_bot_count = 0
         while True:
             try:
-                url = _build_url(self._cursor)
+                url = _build_url(self._url, self._cursor)
                 ws = websocket.create_connection(url)
                 attempt = 0
                 print(f"Jetstream connected (cursor={self._cursor})")

@@ -21,6 +21,7 @@ class BotConfig:
     metrics_enabled: bool = True
     cache_ttl_seconds: float = 3600.0
     use_jetstream: bool = False
+    jetstream_url: str = "wss://jetstream1.us-east.bsky.network/subscribe"
     rate_limiting: RateLimitConfig = field(default_factory=RateLimitConfig)
     trivia_question_bank_path: str | None = None
     trivia_timeout_hours: float = 24.0
@@ -52,6 +53,10 @@ def load_config(path: Path) -> BotConfig:
         metrics_enabled=bot.get("metrics_enabled", True),
         cache_ttl_seconds=bot.get("cache_ttl_seconds", 3600.0),
         use_jetstream=bot.get("use_jetstream", False),
+        jetstream_url=bot.get(
+            "jetstream_url",
+            "wss://jetstream1.us-east.bsky.network/subscribe",
+        ),
         rate_limiting=RateLimitConfig(
             window_seconds=rl.get("window_seconds", 60.0),
             max_mentions_per_window=rl.get("max_mentions_per_window", 5),
