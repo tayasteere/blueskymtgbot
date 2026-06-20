@@ -116,7 +116,9 @@ class JetstreamListener:
                 "Install it with: pip install -e '.[jetstream]'"
             )
 
+        print(f"Jetstream: filtering for bot_did={self._bot_did}")
         attempt = 0
+        event_count = 0
         while True:
             try:
                 url = _build_url(self._cursor)
@@ -129,9 +131,16 @@ class JetstreamListener:
                     time_us = event.get("time_us")
                     if time_us is not None:
                         self._cursor = time_us
+                    event_count += 1
+                    if event_count % 50_000 == 0:
+                        print(f"Jetstream: {event_count} events received")
                     if mentions_bot(event, self._bot_did) or replies_to_bot(
                         event, self._bot_did
                     ):
+                        print(
+                            f"Jetstream: mention matched from"
+                            f" {event.get('did')} (event #{event_count})"
+                        )
                         yield event_to_mention(event, self._bot_did)
             except Exception as err:
                 delay = _RECONNECT_DELAYS_S[
