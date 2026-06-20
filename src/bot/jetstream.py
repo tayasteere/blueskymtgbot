@@ -137,12 +137,18 @@ class JetstreamListener:
                     if _is_new_post(event):
                         post_count += 1
                         record = event["commit"].get("record", {})
-                        if any(
-                            feat.get("$type") == _FACET_MENTION
+                        mentioned_dids = [
+                            feat.get("did")
                             for f in record.get("facets", [])
                             for feat in f.get("features", [])
-                        ):
+                            if feat.get("$type") == _FACET_MENTION
+                        ]
+                        if mentioned_dids:
                             facet_mention_count += 1
+                            print(
+                                f"Jetstream: @-mention facet(s) from"
+                                f" {event.get('did')}: {mentioned_dids}"
+                            )
                     if event_count % 1_000 == 0:
                         print(
                             f"Jetstream: {event_count} events,"
