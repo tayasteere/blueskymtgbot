@@ -121,6 +121,7 @@ class JetstreamListener:
         event_count = 0
         post_count = 0
         facet_mention_count = 0
+        reply_to_bot_count = 0
         while True:
             try:
                 url = _build_url(self._cursor)
@@ -149,11 +150,22 @@ class JetstreamListener:
                                 f"Jetstream: @-mention facet(s) from"
                                 f" {event.get('did')}: {mentioned_dids}"
                             )
+                        reply = record.get("reply")
+                        if reply:
+                            parent_uri = reply.get("parent", {}).get("uri", "")
+                            if self._bot_did in parent_uri:
+                                reply_to_bot_count += 1
+                                print(
+                                    f"Jetstream: reply to bot from"
+                                    f" {event.get('did')}:"
+                                    f" {record.get('text', '')!r}"
+                                )
                     if event_count % 1_000 == 0:
                         print(
                             f"Jetstream: {event_count} events,"
                             f" {post_count} posts,"
-                            f" {facet_mention_count} with @-mention facets"
+                            f" {facet_mention_count} with @-mention facets,"
+                            f" {reply_to_bot_count} replies to bot"
                         )
                     if mentions_bot(event, self._bot_did) or replies_to_bot(
                         event, self._bot_did
