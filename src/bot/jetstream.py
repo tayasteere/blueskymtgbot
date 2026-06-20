@@ -119,6 +119,8 @@ class JetstreamListener:
         print(f"Jetstream: filtering for bot_did={self._bot_did}")
         attempt = 0
         event_count = 0
+        post_count = 0
+        facet_mention_count = 0
         while True:
             try:
                 url = _build_url(self._cursor)
@@ -132,8 +134,21 @@ class JetstreamListener:
                     if time_us is not None:
                         self._cursor = time_us
                     event_count += 1
-                    if event_count % 50_000 == 0:
-                        print(f"Jetstream: {event_count} events received")
+                    if _is_new_post(event):
+                        post_count += 1
+                        record = event["commit"].get("record", {})
+                        if any(
+                            feat.get("$type") == _FACET_MENTION
+                            for f in record.get("facets", [])
+                            for feat in f.get("features", [])
+                        ):
+                            facet_mention_count += 1
+                    if event_count % 1_000 == 0:
+                        print(
+                            f"Jetstream: {event_count} events,"
+                            f" {post_count} posts,"
+                            f" {facet_mention_count} with @-mention facets"
+                        )
                     if mentions_bot(event, self._bot_did) or replies_to_bot(
                         event, self._bot_did
                     ):
