@@ -136,6 +136,7 @@ def _match_set_name(canonical: str, user: str) -> bool:
 
 
 def check_answer(answer_type: str, canonical: str, user_answer: str) -> bool:
+    user_answer = user_answer.strip().strip(".,!?;:\"'")
     match answer_type:
         case "card_name":
             norm_user = _normalize_card_name(user_answer)

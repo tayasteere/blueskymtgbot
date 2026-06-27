@@ -261,6 +261,44 @@ def test_keywords_wrong():
 
 
 # ---------------------------------------------------------------------------
+# check_answer — trailing/leading punctuation stripped
+# ---------------------------------------------------------------------------
+
+def test_punctuation_card_name_exclamation():
+    assert check_answer("card_name", "White", "White!")
+
+def test_punctuation_card_name_period():
+    assert check_answer("card_name", "Lightning Bolt", "Lightning Bolt.")
+
+def test_punctuation_rarity_exclamation():
+    assert check_answer("rarity", "Common", "Common!")
+
+def test_punctuation_colors_exclamation():
+    assert check_answer("colors", "White", "White!")
+
+def test_punctuation_type_line_exclamation():
+    assert check_answer("type_line", "Legendary Creature", "Legendary Creature!")
+
+def test_punctuation_keywords_exclamation():
+    assert check_answer("keywords", "Flying", "Flying!")
+
+def test_punctuation_subtype_exclamation():
+    assert check_answer("subtype", "Elf", "Elf!")
+
+def test_punctuation_pt_exclamation():
+    assert check_answer("power_toughness", "2/5", "2/5!")
+
+def test_punctuation_cmc_exclamation():
+    assert check_answer("cmc", "3", "3!")
+
+def test_punctuation_set_name_exclamation():
+    assert check_answer("set_name", "Betrayers of Kamigawa (BOK)", "Betrayers!")
+
+def test_punctuation_leading_and_trailing():
+    assert check_answer("card_name", "White", "White!.")
+
+
+# ---------------------------------------------------------------------------
 # format_trivia_post
 # ---------------------------------------------------------------------------
 
